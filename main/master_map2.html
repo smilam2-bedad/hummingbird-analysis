@@ -1,0 +1,2384 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Hummingbird — Institution Risk Intelligence</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f1117; --surface: #181a20; --surface2: #1e2028; --border: #2a2d37;
+            --text: #e2e4e9; --text2: #8b8fa3; --accent: #6c5ce7; --accent2: #a29bfe;
+            --critical: #ff4757; --high: #ff6b35; --elevated: #ffa502; --moderate: #3b82f6;
+            --low: #10b981; --healthy: #10b981; --dual: #ff4757;
+            --ipeds: #6c5ce7; --hb990: #00b894; --research: #e056fd;
+            --closed-fill: #3a3a4a; --closed-border: #5a5a72;
+            --font: 'DM Sans', -apple-system, sans-serif; --mono: 'JetBrains Mono', monospace;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--font); background: var(--bg); color: var(--text); }
+        #map { width: 100%; height: 100vh; }
+        .leaflet-tile-pane { filter: saturate(0.3) brightness(0.65); }
+        .leaflet-marker-pane, .leaflet-popup-pane, .leaflet-overlay-pane { filter: none; }
+        .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(108,92,231,0.25) !important; }
+        .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background: rgba(108,92,231,0.7) !important; color: white !important; font-family: var(--mono) !important; font-size: 12px !important; }
+
+        #sidebar { position: absolute; top: 0; left: 0; z-index: 1000; width: 370px; height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transition: transform 0.3s ease; }
+        #sidebar.collapsed { transform: translateX(-370px); }
+        #sidebar-toggle { position: absolute; top: 12px; z-index: 1001; left: 370px; width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border); border-left: none; border-radius: 0 6px 6px 0; color: var(--text2); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: left 0.3s ease; }
+        #sidebar.collapsed + #sidebar-toggle { left: 0; }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%); }
+        .sidebar-header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--accent2), #74b9ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .sidebar-header p { font-size: 11px; color: var(--text2); margin-top: 4px; }
+        .clusters-btn { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 12px; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.25); border-radius: 6px; color: #74b9ff; font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.15s; width: 100%; justify-content: center; }
+        .clusters-btn:hover { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.5); color: #93c5fd; }
+        .sidebar-body { flex: 1; overflow-y: auto; padding: 16px; }
+        .sidebar-body::-webkit-scrollbar { width: 4px; }
+        .sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .section { margin-bottom: 16px; }
+        .section-label { font-size: 10px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .search-box { position: relative; }
+        .search-box input { width: 100%; padding: 10px 12px 10px 34px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 13px; outline: none; transition: border-color 0.2s; }
+        .search-box input:focus { border-color: var(--accent); }
+        .search-box input::placeholder { color: var(--text2); }
+        .search-box .icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text2); font-size: 14px; pointer-events: none; }
+        #searchResults { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; max-height: 240px; overflow-y: auto; display: none; z-index: 10; }
+        .sr-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s; }
+        .sr-item:hover { background: var(--bg); }
+        .sr-item:last-child { border-bottom: none; }
+        .sr-name { font-size: 12px; font-weight: 600; }
+        .sr-meta { font-size: 10px; color: var(--text2); margin-top: 2px; }
+        .tabs { display: flex; gap: 4px; }
+        .tab { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-weight: 500; color: var(--text2); transition: all 0.2s; }
+        .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .tab:hover:not(.active) { background: var(--surface2); color: var(--text); }
+        .color-tabs { display: flex; gap: 4px; margin-top: 8px; }
+        .color-tab { flex: 1; padding: 6px 4px; text-align: center; cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 10px; font-weight: 600; color: var(--text2); transition: all 0.2s; }
+        .color-tab.active { border-color: var(--accent2); color: var(--accent2); background: rgba(108,92,231,0.1); }
+        .color-tab:hover:not(.active) { border-color: var(--text2); }
+        select { width: 100%; padding: 8px 10px; margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8fa3'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+        select:focus { border-color: var(--accent); }
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 6px; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-ghost { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
+
+        /* ── Closed toggle ─────────────────────────────── */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; margin-top: 6px; }
+        .toggle-row .toggle-label { font-size: 11px; color: var(--text2); }
+        .toggle-row .toggle-label span { color: var(--closed-border); font-size: 10px; display: block; margin-top: 1px; }
+        .toggle-switch { position: relative; width: 32px; height: 18px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .toggle-switch .slider { position: absolute; inset: 0; background: var(--border); border-radius: 18px; cursor: pointer; transition: background 0.2s; }
+        .toggle-switch .slider:before { content: ''; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform 0.2s; }
+        .toggle-switch input:checked + .slider { background: var(--accent); }
+        .toggle-switch input:checked + .slider:before { transform: translateX(14px); }
+
+        /* ── Shortlist ─────────────────────────────────── */
+        .shortlist-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+        .sl-tab { flex: 1; padding: 8px 6px; text-align: center; cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--text2); transition: all 0.2s; }
+        .sl-tab.active { background: rgba(255,193,7,0.15); color: #ffc107; border-color: rgba(255,193,7,0.4); }
+        .sl-tab .sl-count { display: inline-block; background: rgba(255,193,7,0.2); color: #ffc107; border-radius: 10px; padding: 0 5px; font-size: 9px; margin-left: 4px; min-width: 16px; }
+        .sl-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 300px; overflow-y: auto; }
+        .sl-list::-webkit-scrollbar { width: 3px; }
+        .sl-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .sl-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg); border-radius: 6px; border-left: 2px solid rgba(255,193,7,0.5); font-size: 11px; cursor: pointer; transition: border-color 0.15s; }
+        .sl-item:hover { border-left-color: #ffc107; }
+        .sl-item-name { flex: 1; font-weight: 600; line-height: 1.3; }
+        .sl-item-meta { font-size: 9px; color: var(--text2); margin-top: 1px; }
+        .sl-item-remove { color: var(--text2); cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 3px; flex-shrink: 0; }
+        .sl-item-remove:hover { color: #ff4757; background: rgba(255,71,87,0.1); }
+        .sl-empty { text-align: center; padding: 24px 12px; color: var(--text2); font-size: 11px; line-height: 1.6; }
+        .sl-empty-icon { font-size: 24px; margin-bottom: 8px; }
+        .sl-actions { display: flex; gap: 6px; margin-top: 10px; }
+        /* ── Batch groups ── */
+        .sl-batch { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+        .sl-batch-hdr { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--surface2); cursor: pointer; font-size: 10px; font-weight: 600; color: var(--text2); }
+        .sl-batch-hdr:hover { color: var(--text); }
+        .sl-batch-label { flex: 1; }
+        .sl-batch-count { font-family: var(--mono); font-size: 9px; background: rgba(255,193,7,0.15); color: #ffc107; padding: 1px 6px; border-radius: 8px; }
+        .sl-batch-remove { color: var(--text2); font-size: 11px; padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+        .sl-batch-remove:hover { color: #ff4757; background: rgba(255,71,87,0.1); }
+        .sl-batch-items { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+        .sl-batch.open .sl-batch-items { max-height: 2000px; }
+        /* ── Ranked report table in panel ── */
+        .sl-report { margin-top: 10px; }
+        .sl-report-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .sl-report-title { font-size: 11px; font-weight: 600; color: var(--text); flex: 1; }
+        .sl-sort-select { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 9px; padding: 3px 6px; font-family: var(--mono); }
+        .sl-report-tbl { width: 100%; border-collapse: collapse; font-size: 9px; }
+        .sl-report-tbl th { padding: 5px 4px; text-align: left; font-family: var(--mono); font-size: 8px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); background: var(--surface2); position: sticky; top: 0; white-space: nowrap; cursor: pointer; }
+        .sl-report-tbl th:hover { color: var(--text); }
+        .sl-report-tbl td { padding: 5px 4px; border-bottom: 1px solid rgba(42,45,55,0.4); font-family: var(--mono); white-space: nowrap; }
+        .sl-report-tbl tr:hover td { background: rgba(255,255,255,0.02); }
+        .sl-report-tbl .rank-cell { font-weight: 700; color: var(--accent2); width: 22px; text-align: center; }
+        .sl-report-tbl .name-cell { font-family: var(--font); font-weight: 600; white-space: normal; max-width: 120px; font-size: 10px; }
+        .sl-report-tbl .name-sub { font-size: 8px; color: var(--text2); font-weight: 400; }
+        .sl-report-scroll { max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+        .sl-report-scroll::-webkit-scrollbar { width: 3px; }
+        .sl-report-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .sl-composite-bar { display: inline-block; height: 6px; border-radius: 3px; min-width: 3px; }
+        .sl-view-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+        .sl-view-tab { padding: 4px 8px; font-size: 9px; font-weight: 600; border-radius: 4px; cursor: pointer; background: var(--bg); border: 1px solid var(--border); color: var(--text2); }
+        .sl-view-tab.active { background: rgba(108,92,231,0.15); color: var(--accent2); border-color: rgba(108,92,231,0.4); }
+        .popup-btn-group { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; z-index: 10; }
+        .popup-star-btn, .popup-land-btn, .popup-news-btn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: var(--text2); cursor: pointer; font-size: 13px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
+        .popup-star-btn:hover { background: rgba(255,193,7,0.15); color: #ffc107; border-color: rgba(255,193,7,0.4); }
+        .popup-star-btn.starred { color: #ffc107; border-color: rgba(255,193,7,0.4); background: rgba(255,193,7,0.12); }
+        .popup-land-btn:hover { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.4); }
+        .popup-land-btn.has-data { color: #10b981; border-color: rgba(16,185,129,0.35); background: rgba(16,185,129,0.08); }
+        .popup-land-btn.no-data { opacity: 0.35; cursor: default; }
+        /* ── Collapsible filter section ────────────────── */
+        .filter-collapse-hdr { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 6px 0; }
+        .filter-collapse-hdr:hover .section-label { color: var(--text); }
+        .filter-collapse-arrow { font-size: 9px; color: var(--text2); transition: transform 0.2s; }
+        .filter-collapse-hdr.open .filter-collapse-arrow { transform: rotate(90deg); }
+        .filter-collapse-body { display: none; }
+        .filter-collapse-body.open { display: block; }
+        /* ── OSM filter pills ──────────────────────────── */
+        .osm-filter-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .osm-pill { padding: 3px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text2); font-size: 9px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+        .osm-pill.active { background: rgba(16,185,129,0.15); color: #10b981; border-color: rgba(16,185,129,0.4); }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; background: var(--bg); border-radius: 8px; margin-top: 12px; }
+        .stat-card { padding: 10px; background: var(--surface2); border-radius: 6px; border-left: 3px solid var(--border); }
+        .stat-card.critical { border-left-color: var(--critical); }
+        .stat-card.high { border-left-color: var(--high); }
+        .stat-card.total { border-left-color: var(--accent); }
+        .stat-card.ipeds-card { border-left-color: var(--ipeds); }
+        .stat-card.hb990-card { border-left-color: var(--hb990); }
+        .stat-card.closed-card { border-left-color: var(--closed-border); }
+        .stat-val { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+        .stat-label { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .map-legend { background: var(--surface) !important; border: 1px solid var(--border); padding: 12px; border-radius: 8px; color: var(--text); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .map-legend h4 { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .map-legend .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 11px; }
+        .map-legend .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .map-legend .ring { width: 10px; height: 10px; border-radius: 50%; border: 2px dashed; flex-shrink: 0; }
+        .leaflet-popup-content-wrapper { background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 12px !important; box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important; max-height: 90vh; display: flex; flex-direction: column; overflow: visible; }
+        .leaflet-popup-tip { background: var(--surface) !important; border: 1px solid var(--border) !important; }
+        .leaflet-popup-content { margin: 0 !important; padding: 0 !important; width: 380px !important; display: flex; flex-direction: column; max-height: 90vh; overflow: visible; }
+        .popup-wrap { display: flex; flex-direction: column; max-height: 90vh; border-radius: 12px; overflow: hidden; }
+        .popup-head { padding: 16px; border-radius: 12px 12px 0 0; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .popup-head.critical { background: linear-gradient(135deg, #2d1117 0%, #3b1520 100%); border-bottom-color: var(--critical); }
+        .popup-head.high { background: linear-gradient(135deg, #2d2011 0%, #3b2815 100%); border-bottom-color: var(--high); }
+        .popup-head.likely-closed { background: linear-gradient(135deg, #1c1c24 0%, #22222e 100%); border-bottom-color: var(--closed-border); }
+        .popup-head.research { background: linear-gradient(135deg, #1f1130 0%, #2a1540 100%); border-bottom-color: var(--research); }
+        .popup-head h3 { font-size: 14px; font-weight: 700; line-height: 1.3; margin-bottom: 6px; }
+        .popup-head h3.dimmed { color: var(--text2); }
+        .popup-loc { font-size: 11px; color: var(--text2); }
+        .popup-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+        .pbadge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+        .pbadge.distress-critical { background: rgba(255,71,87,0.15); color: var(--critical); border: 1px solid rgba(255,71,87,0.3); }
+        .pbadge.distress-high { background: rgba(255,107,53,0.15); color: var(--high); border: 1px solid rgba(255,107,53,0.3); }
+        .pbadge.distress-moderate { background: rgba(59,130,246,0.15); color: var(--moderate); border: 1px solid rgba(59,130,246,0.3); }
+        .pbadge.distress-low, .pbadge.distress-healthy { background: rgba(16,185,129,0.15); color: var(--low); border: 1px solid rgba(16,185,129,0.3); }
+        .pbadge.source-ipeds { background: rgba(108,92,231,0.15); color: var(--accent2); border: 1px solid rgba(108,92,231,0.3); }
+        .pbadge.source-990 { background: rgba(0,184,148,0.15); color: var(--hb990); border: 1px solid rgba(0,184,148,0.3); }
+        .pbadge.closed-badge { background: rgba(90,90,114,0.2); color: var(--closed-border); border: 1px solid rgba(90,90,114,0.5); }
+        .leaflet-control-attribution { background: var(--surface) !important; color: var(--text2) !important; font-size: 9px !important; }
+        .leaflet-control-attribution a { color: var(--accent2) !important; }
+        .pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+        .pgrid-item { padding: 8px; background: var(--bg); border-radius: 6px; }
+        .pgrid-label { font-size: 9px; color: var(--text2); text-transform: uppercase; }
+        .pgrid-val { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-top: 2px; }
+        .pgrid-val.good { color: var(--low); }
+        .pgrid-val.bad { color: var(--critical); }
+        .pgrid-val.na { color: var(--text2); font-style: italic; }
+        .psection { margin: 12px 0; }
+        .psection-title { font-size: 10px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; cursor: pointer; }
+        .score-meter { display: flex; gap: 12px; margin: 12px 0; }
+        .meter { flex: 1; padding: 12px; background: var(--bg); border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+        .meter-label { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+        .meter-val { font-family: var(--mono); font-size: 22px; font-weight: 700; margin: 4px 0; }
+        .meter-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .meter-fill { height: 100%; border-radius: 2px; }
+        .completeness-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; }
+        .completeness-row .cl { font-size: 9px; color: var(--text2); text-transform: uppercase; white-space: nowrap; }
+        .completeness-row .ct { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+        .completeness-row .cf { height: 100%; border-radius: 3px; }
+        .completeness-row .cv { font-family: var(--mono); font-size: 11px; font-weight: 600; min-width: 32px; text-align: right; }
+        .chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .chip { padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 600; background: rgba(255,71,87,0.1); color: var(--critical); border: 1px solid rgba(255,71,87,0.2); }
+        .chip.pos { background: rgba(16,185,129,0.1); color: var(--low); border-color: rgba(16,185,129,0.2); }
+        .spark { display: flex; align-items: flex-end; gap: 3px; height: 32px; margin-top: 8px; }
+        .spark-bar { flex: 1; border-radius: 3px 3px 0 0; min-height: 3px; }
+        .spark-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--text2); margin-top: 4px; }
+        .trend-arrow { font-size: 16px; } .trend-arrow.up { color: var(--low); } .trend-arrow.down { color: var(--critical); } .trend-arrow.flat { color: var(--text2); }
+        .warning-item { display: flex; gap: 8px; padding: 8px 10px; margin: 4px 0; background: var(--bg); border-radius: 6px; font-size: 11px; line-height: 1.4; border-left: 3px solid var(--border); }
+        .warning-item.crit { border-left-color: var(--critical); background: rgba(255,71,87,0.05); }
+        .warning-item.warn { border-left-color: var(--elevated); background: rgba(255,165,2,0.05); }
+
+        /* ── Likely-closed notice in popup ────────────── */
+        .closed-notice { margin: 8px 0 12px; padding: 10px 12px; background: rgba(90,90,114,0.12); border: 1px solid rgba(90,90,114,0.35); border-radius: 8px; font-size: 11px; color: var(--text2); line-height: 1.5; }
+        .closed-notice strong { color: var(--text); display: block; margin-bottom: 3px; }
+        .closed-notice .sub { font-size: 10px; margin-top: 5px; font-style: italic; }
+
+        /* ── News panel ──────────────────────────────────── */
+        #news-panel { position: absolute; top: 0; right: 0; z-index: 1002; width: 370px; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transform: translateX(370px); transition: transform 0.3s ease; }
+        #news-panel.open { transform: translateX(0); }
+        .news-panel-header { padding: 16px 16px 14px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%); flex-shrink: 0; }
+        .news-panel-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+        .news-panel-title { font-size: 13px; font-weight: 700; line-height: 1.3; flex: 1; }
+        .news-panel-sub { font-size: 10px; color: var(--text2); margin-top: 3px; }
+        .news-close-btn { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; font-size: 14px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+        .news-close-btn:hover { background: var(--bg); color: var(--text); }
+        .news-fetch-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .news-fetch-btn { padding: 7px 14px; background: var(--accent); border: none; border-radius: 6px; color: white; font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; white-space: nowrap; }
+        .news-fetch-btn:hover { opacity: 0.85; }
+        .news-fetch-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .news-fetch-meta { font-size: 10px; color: var(--text2); }
+        .news-fetch-meta a { color: var(--accent2); cursor: pointer; text-decoration: none; }
+        .news-fetch-meta a:hover { text-decoration: underline; }
+        .news-body { flex: 1; overflow-y: auto; padding: 12px; }
+        .news-body::-webkit-scrollbar { width: 4px; }
+        .news-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .news-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; gap: 10px; color: var(--text2); font-size: 12px; }
+        .news-spinner { width: 22px; height: 22px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .news-empty { text-align: center; padding: 40px 16px; color: var(--text2); font-size: 12px; line-height: 1.6; }
+        .news-empty .news-empty-icon { font-size: 28px; margin-bottom: 10px; }
+        .news-signal-group { margin-bottom: 14px; }
+        .news-signal-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .news-signal-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .news-item { padding: 10px; background: var(--bg); border-radius: 8px; margin-bottom: 6px; border-left: 3px solid var(--border); transition: border-color 0.15s; }
+        .news-item:hover { border-left-color: var(--accent2); }
+        .news-item.signal-closure { border-left-color: var(--critical); background: rgba(255,71,87,0.04); }
+        .news-item.signal-accreditation { border-left-color: var(--high); background: rgba(255,107,53,0.04); }
+        .news-item.signal-financial { border-left-color: var(--elevated); background: rgba(255,165,2,0.04); }
+        .news-headline { font-size: 12px; font-weight: 600; line-height: 1.4; color: var(--text); }
+        .news-headline a { color: inherit; text-decoration: none; }
+        .news-headline a:hover { color: var(--accent2); }
+        .news-byline { font-size: 10px; color: var(--text2); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .news-byline .news-source { color: var(--accent2); }
+        .news-error { padding: 14px; background: rgba(255,71,87,0.08); border: 1px solid rgba(255,71,87,0.2); border-radius: 8px; font-size: 11px; color: var(--critical); line-height: 1.5; }
+
+        /* ── News panel tabs ──────────────────────────────────── */
+        .news-tabs { display: flex; gap: 4px; margin-top: 10px; }
+        .news-tab { flex: 1; padding: 6px 4px; text-align: center; cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--text2); transition: all 0.2s; }
+        .news-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .news-tab:hover:not(.active) { background: var(--surface2); color: var(--text); }
+        /* ── Temperature bar ──────────────────────────────────── */
+        .temp-bar-wrap { padding: 10px 12px; background: var(--bg); border-radius: 8px; margin: 0 0 12px 0; }
+        .temp-bar-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .temp-bar-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); }
+        .temp-score { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+        .temp-score.negative { color: var(--critical); }
+        .temp-score.neutral  { color: var(--text2); }
+        .temp-score.positive { color: var(--low); }
+        .temp-bucket { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
+        .temp-bucket.negative { background: rgba(255,71,87,0.15); color: var(--critical); }
+        .temp-bucket.neutral  { background: rgba(139,143,163,0.15); color: var(--text2); }
+        .temp-bucket.positive { background: rgba(16,185,129,0.15); color: var(--low); }
+        .temp-track { height: 6px; background: var(--border); border-radius: 3px; position: relative; }
+        .temp-fill  { height: 100%; border-radius: 3px; position: absolute; }
+        .temp-center { position: absolute; top: -2px; left: 50%; width: 2px; height: 10px; background: var(--border); border-radius: 1px; }
+        .temp-meta { font-size: 9px; color: var(--text2); margin-top: 5px; }
+        /* ── ProPublica section ───────────────────────────────── */
+        .pp-section { margin-bottom: 10px; }
+        .pp-section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); padding: 6px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; }
+        .pp-mission { font-size: 11px; color: var(--text); line-height: 1.5; padding: 8px; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--accent); }
+        .pp-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .pp-kv-item { padding: 7px 8px; background: var(--bg); border-radius: 6px; }
+        .pp-kv-label { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+        .pp-kv-val { font-family: var(--mono); font-size: 12px; font-weight: 600; margin-top: 2px; }
+        .pp-exec-item { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); }
+        .pp-exec-item:last-child { border-bottom: none; }
+        .pp-exec-name { font-size: 11px; font-weight: 600; }
+        .pp-exec-title { font-size: 9px; color: var(--text2); margin-top: 1px; }
+        .pp-exec-comp { font-family: var(--mono); font-size: 11px; color: var(--accent2); white-space: nowrap; }
+        .pp-loading { display: flex; align-items: center; gap: 8px; color: var(--text2); font-size: 11px; padding: 16px 0; }
+        .pp-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+        .pp-error { font-size: 11px; color: var(--text2); padding: 16px 0; text-align: center; line-height: 1.6; }
+        .pp-link { font-size: 10px; color: var(--accent2); text-decoration: none; }
+        .pp-link:hover { text-decoration: underline; }
+        .popup-content { padding: 12px; flex: 1; overflow-y: auto; min-height: 0; }
+        .popup-content .spark-chart-wrap { overflow: visible; }
+        /* ── Land panel ─────────────────────────────────── */
+        #land-panel { position: absolute; top: 0; right: 0; z-index: 1001; width: 360px; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; transform: translateX(360px); transition: transform 0.3s ease; }
+        #land-panel.open { transform: translateX(0); }
+        .land-panel-head { padding: 16px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #0a1628 0%, #0d2137 100%); flex-shrink: 0; position: relative; }
+        .env-score-badge { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); }
+        .env-score-gauge { position: relative; width: 48px; height: 48px; flex-shrink: 0; }
+        .env-score-gauge svg { width: 48px; height: 48px; transform: rotate(-90deg); }
+        .env-score-gauge .gauge-bg  { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 4; }
+        .env-score-gauge .gauge-fill { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+        .env-score-num { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+        .env-score-info { flex: 1; }
+        .env-score-label { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+        .env-score-sub { font-size: 10px; color: var(--text2); line-height: 1.4; }
+        .env-score-breakdown { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 3px; }
+        .env-score-feat { font-family: var(--mono); font-size: 9px; padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--text2); border: 1px solid var(--border); }
+        .env-score-components { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+        .env-comp { padding: 5px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+        .env-comp-label { font-size: 9px; color: var(--text2); margin-bottom: 1px; }
+        .env-comp-val { font-family: var(--mono); font-size: 11px; font-weight: 500; }
+        .land-panel-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; padding-right: 32px; }
+        .land-panel-sub { font-size: 10px; color: var(--text2); }
+        .land-close-btn { position: absolute; top: 12px; right: 12px; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; font-size: 14px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+        .land-close-btn:hover { background: var(--bg); color: var(--text); }
+        .land-summary-strip { display: flex; gap: 6px; padding: 10px 14px; background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .land-sum-chip { flex: 1; padding: 6px 8px; background: var(--surface2); border-radius: 6px; text-align: center; }
+        .land-sum-val { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); }
+        .land-sum-label { font-size: 8px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+        .land-body { flex: 1; overflow-y: auto; padding: 12px; }
+        .land-body::-webkit-scrollbar { width: 4px; }
+        .land-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .land-cat-section { margin-bottom: 14px; }
+        .land-cat-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; display: inline-block; }
+        .land-feature-item { font-size: 11px; color: var(--text); padding: 3px 0 3px 10px; border-left: 2px solid var(--border); margin-bottom: 2px; line-height: 1.4; }
+        .land-timestamp { font-size: 9px; color: var(--text2); padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+        .land-empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 11px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- Land environment panel -->
+    <div id="land-panel">
+        <div class="land-panel-head">
+            <div class="land-panel-title" id="land-panel-title">Land Environment</div>
+            <div class="land-panel-sub" id="land-panel-sub"></div>
+            <button class="land-close-btn" onclick="closeLandPanel()">✕</button>
+        </div>
+        <div class="land-summary-strip" id="land-summary-strip"></div>
+        <div class="land-body" id="land-body"></div>
+        <div class="land-timestamp" id="land-timestamp"></div>
+    </div>
+    <!-- ── News Panel ──────────────────────────────────────────────────── -->
+    <div id="news-panel">
+        <div class="news-panel-header">
+            <div class="news-panel-header-top">
+                <div>
+                    <div class="news-panel-title" id="news-panel-title">Institution News</div>
+                    <div class="news-panel-sub" id="news-panel-sub">Select an institution and fetch news</div>
+                </div>
+                <button class="news-close-btn" onclick="closeNewsPanel()" title="Close">&#x2715;</button>
+            </div>
+            <div class="news-tabs">
+                <div class="news-tab active" id="tab-news" onclick="switchNewsTab('news')">&#128240; News</div>
+                <div class="news-tab" id="tab-pp" onclick="switchNewsTab('pp')">&#128203; Org Data</div>
+                <div class="news-tab" id="tab-env" onclick="switchNewsTab('env')">&#127807; Environment</div>
+            </div>
+            <div class="news-fetch-bar" id="news-fetch-bar">
+                <button class="news-fetch-btn" id="news-fetch-btn" onclick="fetchNews()" disabled>&#128240; Fetch News</button>
+                <div class="news-fetch-meta" id="news-fetch-meta"></div>
+            </div>
+        </div>
+        <div class="news-body" id="news-body">
+            <div class="news-empty">
+                <div class="news-empty-icon">&#128240;</div>
+                Click the <strong>&#128240;</strong> button on any institution popup to load news here.
+            </div>
+        </div>
+        <div class="news-body" id="pp-body" style="display:none">
+            <div class="news-empty">
+                <div class="news-empty-icon">&#128203;</div>
+                Open an institution to load org data.
+            </div>
+        </div>
+        <div class="news-body" id="env-body" style="display:none">
+            <div id="env-content" style="padding:12px;font-size:11px;color:var(--text)"></div>
+        </div>
+    </div>
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h1>Hummingbird Intelligence</h1>
+            <p id="headerSubtitle">Loading...</p>
+            <a href="clusters.html" target="_blank" class="clusters-btn">🔬 Opportunity Clusters</a>
+        <a href="summary.html" target="_blank" class="clusters-btn" style="background:rgba(0,184,148,0.1);border-color:rgba(0,184,148,0.3);color:#00b894;margin-top:6px">📊 Market Summary</a>
+        <a href="scatter3d.html" target="_blank" class="clusters-btn" style="background:rgba(162,155,254,0.1);border-color:rgba(162,155,254,0.3);color:#a29bfe;margin-top:6px">✦ 3D Opportunity Space</a>
+        <a href="news.html" target="_blank" class="clusters-btn" style="background:rgba(255,71,87,0.08);border-color:rgba(255,71,87,0.25);color:#ff4757;margin-top:6px">📡 News Intelligence</a>
+        </div>
+        <div class="sidebar-body">
+
+            <!-- Search -->
+            <div class="section"><div class="section-label">Search</div><div class="search-box"><span class="icon">⌕</span><input type="text" id="searchInput" placeholder="Find an institution..." autocomplete="off"><div id="searchResults"></div></div></div>
+
+            <!-- Filters panel (always visible) -->
+            <div id="filtersPanel">
+                <!-- Data Source -->
+                <div class="section"><div class="section-label">Data Source</div><div class="tabs"><div class="tab active" data-val="" onclick="setTab(this,'source')">All</div><div class="tab" data-val="IPEDS" onclick="setTab(this,'source')">IPEDS</div><div class="tab" data-val="Hummingbird_990" onclick="setTab(this,'source')">990</div></div></div>
+
+                <!-- Color By -->
+                <div class="section"><div class="section-label">Color By</div><div class="color-tabs" id="colorTabs"><div class="color-tab active" data-mode="distress" onclick="setColorMode(this)">Distress</div><div class="color-tab" data-mode="ml_risk" onclick="setColorMode(this)">ML Risk</div><div class="color-tab" data-mode="source" onclick="setColorMode(this)">Source</div><div class="color-tab" data-mode="type" onclick="setColorMode(this)">Type</div></div></div>
+
+                <!-- Geography -->
+                <div class="section">
+                    <div class="section-label">Region</div>
+                    <div class="tabs" style="flex-wrap:wrap;gap:4px">
+                        <div class="tab active" style="flex:none;padding:6px 8px;font-size:10px" data-val="" onclick="setTab(this,'region')">All</div>
+                        <div class="tab" style="flex:none;padding:6px 8px;font-size:10px" data-val="Northeast" onclick="setTab(this,'region')">Northeast</div>
+                        <div class="tab" style="flex:none;padding:6px 8px;font-size:10px" data-val="Southeast" onclick="setTab(this,'region')">Southeast</div>
+                        <div class="tab" style="flex:none;padding:6px 8px;font-size:10px" data-val="Midwest" onclick="setTab(this,'region')">Midwest</div>
+                        <div class="tab" style="flex:none;padding:6px 8px;font-size:10px" data-val="Southwest" onclick="setTab(this,'region')">Southwest</div>
+                        <div class="tab" style="flex:none;padding:6px 8px;font-size:10px" data-val="West" onclick="setTab(this,'region')">West</div>
+                    </div>
+                    <select id="fState" style="margin-top:6px" onchange="applyFilters()">
+                        <option value="">All States</option>
+                        <option>Alabama</option><option>Alaska</option><option>Arizona</option><option>Arkansas</option><option>California</option><option>Colorado</option><option>Connecticut</option><option>Delaware</option><option>District of Columbia</option><option>Florida</option><option>Georgia</option><option>Hawaii</option><option>Idaho</option><option>Illinois</option><option>Indiana</option><option>Iowa</option><option>Kansas</option><option>Kentucky</option><option>Louisiana</option><option>Maine</option><option>Maryland</option><option>Massachusetts</option><option>Michigan</option><option>Minnesota</option><option>Mississippi</option><option>Missouri</option><option>Montana</option><option>Nebraska</option><option>Nevada</option><option>New Hampshire</option><option>New Jersey</option><option>New Mexico</option><option>New York</option><option>North Carolina</option><option>North Dakota</option><option>Ohio</option><option>Oklahoma</option><option>Oregon</option><option>Pennsylvania</option><option>Rhode Island</option><option>South Carolina</option><option>South Dakota</option><option>Tennessee</option><option>Texas</option><option>Utah</option><option>Vermont</option><option>Virginia</option><option>Washington</option><option>West Virginia</option><option>Wisconsin</option><option>Wyoming</option><option>Puerto Rico</option><option>Guam</option><option>Virgin Islands</option>
+                    </select>
+                </div>
+
+                <!-- Institution Type -->
+                <div class="section"><div class="section-label">Institution Type</div><select id="fType"><option value="">All Types</option><option value="__higher_ed__">All Higher Education</option><optgroup label="Higher Education (IPEDS)"><option value="Public | 4-year">Public 4-Year</option><option value="Public | 2-year">Public 2-Year</option><option value="Private Non-Profit | 4-year">Private NP 4-Year</option><option value="Private Non-Profit | 2-year">Private NP 2-Year</option><option value="Private For-Profit | 4-year">Private FP 4-Year</option><option value="Private For-Profit | 2-year">Private FP 2-Year</option></optgroup><optgroup label="BMF / 990"><option value="Religious Institution">Religious</option><option value="Recreation/Camp">Recreation/Camp</option><option value="Educational Institution">Educational</option><option value="Youth Development">Youth Development</option><option value="Human Services">Human Services</option><option value="Environmental/Conservation">Environmental</option><option value="Animal/Wildlife">Animal/Wildlife</option><option value="Agriculture/Farm">Agriculture/Farm</option><option value="Housing/Residential">Housing/Residential</option><option value="Other Nonprofit">Other Nonprofit</option></optgroup></select></div>
+
+                <!-- Urbanization -->
+                <div class="section"><div class="section-label">Urbanization</div><select id="fUrban" onchange="applyFilters()">
+                    <option value="">Any</option>
+                    <option value="City">City (Large / Midsize / Small)</option>
+                    <option value="Suburb">Suburb (Large / Midsize / Small)</option>
+                    <option value="Town">Town (Fringe / Distant / Remote)</option>
+                    <option value="Rural">Rural (Fringe / Distant / Remote)</option>
+                </select></div>
+
+                <!-- Risk Filter -->
+                <div class="section"><div class="section-label">Risk Filter</div><select id="fRisk"><option value="">All Levels</option><optgroup label="Distress Score"><option value="critical">Critical Only</option><option value="high_plus">High + Critical</option><option value="moderate_plus">Moderate+</option><option value="distressed_40">Score 40+</option></optgroup><optgroup label="ML Risk (IPEDS)"><option value="ml_critical">ML Critical</option><option value="ml_high">ML High+</option><option value="ml_any_warnings">Has ML Warnings</option></optgroup><optgroup label="Status"><option value="likely_closed">Likely Closed Only</option><option value="active_only">Active Only (hide closed)</option></optgroup></select></div>
+
+                <!-- Acreage — fixed to use all sources -->
+                <div class="section"><div class="section-label">Acreage</div><select id="fAcreage">
+                    <option value="">Any</option>
+                    <option value="has_data">Has Any Acreage Data</option>
+                    <option value="20">20+ acres</option>
+                    <option value="50">50+ acres</option>
+                    <option value="100">100+ acres</option>
+                    <option value="200">200+ acres</option>
+                    <option value="500">500+ acres</option>
+                    <option value="1000">1,000+ acres</option>
+                </select></div>
+
+                <!-- Financial Flags (collapsible) -->
+                <div class="section">
+                    <div class="filter-collapse-hdr" onclick="toggleFilterSection(this)">
+                        <div class="section-label" style="margin:0">Financial Flags</div>
+                        <span class="filter-collapse-arrow">▶</span>
+                    </div>
+                    <div class="filter-collapse-body">
+                        <select id="fSpecial" style="margin-top:6px"><option value="">No Special Filter</option><option value="operating_loss">💸 Operating Losses</option><option value="negative_equity">🔴 Negative Net Assets</option><option value="high_debt">🏦 High Debt Ratio</option><option value="revenue_decline">📉 Revenue Decline</option><option value="consecutive_losses">📉 Consecutive Losses</option><option value="has_property">🏗 Has Property Data</option><option value="land_grant">🏛️ Land Grant</option><option value="high_land_potential">🌱 High Land Potential</option></select>
+                    </div>
+                </div>
+
+                <!-- OSM Environment (collapsible) -->
+                <div class="section">
+                    <div class="filter-collapse-hdr" onclick="toggleFilterSection(this)">
+                        <div class="section-label" style="margin:0">🌿 Land Environment</div>
+                        <span class="filter-collapse-arrow">▶</span>
+                    </div>
+                    <div class="filter-collapse-body">
+                        <div style="font-size:9px;color:var(--text2);margin:6px 0 4px">Show only institutions with these OSM features nearby:</div>
+                        <div class="osm-filter-pills" id="osmFilterPills">
+                            <div class="osm-pill" data-cat="water" onclick="toggleOsmPill(this)">💧 Water</div>
+                            <div class="osm-pill" data-cat="winter" onclick="toggleOsmPill(this)">⛷ Winter</div>
+                            <div class="osm-pill" data-cat="outdoor_recreation" onclick="toggleOsmPill(this)">🥾 Recreation</div>
+                            <div class="osm-pill" data-cat="protected_land" onclick="toggleOsmPill(this)">🌲 Protected</div>
+                            <div class="osm-pill" data-cat="natural_features" onclick="toggleOsmPill(this)">⛰ Natural</div>
+                            <div class="osm-pill" data-cat="tourism_leisure" onclick="toggleOsmPill(this)">🎡 Tourism</div>
+                            <div class="osm-pill" data-cat="infrastructure" onclick="toggleOsmPill(this)">✈ Transit</div>
+                        </div>
+                        <div style="font-size:9px;color:var(--text2);margin-top:5px">Match: <label style="cursor:pointer"><input type="radio" name="osmMatch" value="any" checked onchange="applyFilters()"> Any</label> &nbsp; <label style="cursor:pointer"><input type="radio" name="osmMatch" value="all" onchange="applyFilters()"> All selected</label></div>
+                    </div>
+                </div>
+
+                <!-- Display toggle -->
+                <div class="section">
+                    <div class="section-label">Display</div>
+                    <div class="toggle-row">
+                        <div class="toggle-label">Show likely closed <span>greyed dashed markers</span></div>
+                        <label class="toggle-switch"><input type="checkbox" id="showClosed" checked onchange="applyFilters()"><div class="slider"></div></label>
+                    </div>
+                    <div class="toggle-row" style="margin-top:6px">
+                        <div class="toggle-label">Highlight shortlisted <span>gold ring on map</span></div>
+                        <label class="toggle-switch"><input type="checkbox" id="showShortlistHighlight" checked onchange="applyFilters()"><div class="slider"></div></label>
+                    </div>
+                </div>
+
+                <div class="btn-row"><button class="btn btn-primary" onclick="applyFilters()">Apply</button><button class="btn btn-ghost" onclick="resetFilters()">Reset</button></div>
+            </div>
+
+            <!-- Shortlist section (always available, collapsible) -->
+            <div class="section" style="margin-top:4px">
+                <div class="filter-collapse-hdr open" onclick="toggleFilterSection(this)">
+                    <div class="section-label" style="margin:0">⭐ Shortlist <span class="sl-count" id="slCount">0</span></div>
+                    <span class="filter-collapse-arrow">▶</span>
+                </div>
+                <div class="filter-collapse-body" id="slPanel">
+                    <!-- Bulk add -->
+                    <button class="btn btn-primary" onclick="addAllShownToShortlist()" style="font-size:11px;width:100%;margin:8px 0">＋ Add All Shown to Shortlist</button>
+                    <!-- View toggle -->
+                    <div class="sl-view-tabs">
+                        <div class="sl-view-tab active" onclick="setSlView(this,'batches')">Batches</div>
+                        <div class="sl-view-tab" onclick="setSlView(this,'report')">Ranked Report</div>
+                    </div>
+                    <!-- Batch list view -->
+                    <div id="slBatchView">
+                        <div class="sl-list" id="slList"></div>
+                    </div>
+                    <!-- Ranked report view -->
+                    <div id="slReportView" style="display:none">
+                        <div class="sl-report" id="slReport"></div>
+                    </div>
+                    <!-- Actions -->
+                    <div class="sl-actions">
+                        <button class="btn btn-primary" onclick="exportShortlistReport()" style="font-size:11px;flex:1">📄 Export Report</button>
+                        <button class="btn btn-ghost" onclick="exportShortlistCSV()" style="font-size:11px">⬇ CSV</button>
+                        <button class="btn btn-ghost" onclick="clearShortlist()" style="font-size:11px">Clear All</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card total"><div class="stat-val" id="sShowing">0</div><div class="stat-label">Showing</div></div>
+                <div class="stat-card ipeds-card"><div class="stat-val" id="sIPEDS">0</div><div class="stat-label">IPEDS</div></div>
+                <div class="stat-card hb990-card"><div class="stat-val" id="s990">0</div><div class="stat-label">990</div></div>
+                <div class="stat-card critical"><div class="stat-val" id="sCritical">0</div><div class="stat-label">Critical</div></div>
+                <div class="stat-card high"><div class="stat-val" id="sHigh">0</div><div class="stat-label">High</div></div>
+                <div class="stat-card closed-card"><div class="stat-val" id="sClosed">0</div><div class="stat-label">Closed</div></div>
+            </div>
+        </div>
+    </div>
+    <button id="sidebar-toggle" onclick="toggleSidebar()">◀</button>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script>
+    var map, markers, allData = [], plotData = [], colorMode = 'distress';
+    var lastFilteredData = []; // stores the last set of institutions shown on the map
+    var filters = { source:'', region:'' };
+    var searchTimeout;
+    var distressColors = {Critical:'#ff4757',High:'#ff6b35',Moderate:'#ffa502',Low:'#3b82f6',Healthy:'#10b981'};
+    var sourceColors = {IPEDS:'#6c5ce7',Hummingbird_990:'#00b894'};
+    var mlColors = {Critical:'#ff4757',High:'#ff6b35',Elevated:'#ffa502',Moderate:'#3b82f6',Low:'#10b981'};
+    var typeColors = {
+        'Religious Institution':'#e056fd','Recreation/Camp':'#00b894',
+        'Educational Institution':'#6c5ce7','Youth Development':'#ffa502',
+        'Human Services':'#3b82f6','Environmental/Conservation':'#2ed573',
+        'Animal/Wildlife':'#ff6b35','Agriculture/Farm':'#eccc68',
+        'Housing/Residential':'#a29bfe','Other Nonprofit':'#8b8fa3'
+    };
+
+    // Fix double-UTF-8 encoded characters (em dash etc.) that appear as garbled Latin-1 sequences
+    function fixEncoding(str) {
+        if (!str) return str;
+        try {
+            // Convert the string char-by-char through latin1 bytes back to UTF-8
+            var bytes = new Uint8Array(str.length);
+            for (var i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xff;
+            return new TextDecoder('utf-8').decode(bytes);
+        } catch(e) { return str; }
+    }
+    function fixRow(r) {
+        if (r.ml_warning_flags) r.ml_warning_flags = fixEncoding(r.ml_warning_flags);
+        return r;
+    }
+
+    function flag(r, field) {
+        var val = r[field];
+        if (val === undefined || val === null || val === '') return false;
+        if (val === 1 || val === '1' || val === 'True' || val === 'true' || val === true) return true;
+        var n = parseFloat(val);
+        return n === 1;
+    }
+
+    // ── Likely-closed helper ──────────────────────────────────────────────────
+    function isLikelyClosed(r) {
+        return flag(r, 'likely_closed_ipeds');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        map = L.map('map', {zoomControl:false}).setView([39.8,-98.5],4);
+        L.control.zoom({position:'topright'}).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+        markers = L.markerClusterGroup({chunkedLoading:true,maxClusterRadius:45,spiderfyOnMaxZoom:true,showCoverageOnHover:false});
+        map.addLayer(markers);
+        var legend = L.control({position:'bottomright'});
+        legend.onAdd = function(){var d=L.DomUtil.create('div','map-legend');d.id='mapLegend';updateLegend(d);return d;};
+        legend.addTo(map);
+        var si = document.getElementById('searchInput');
+        si.addEventListener('input',function(){clearTimeout(searchTimeout);searchTimeout=setTimeout(function(){doSearch(si.value)},250);});
+        document.addEventListener('click',function(e){if(!e.target.closest('.search-box'))document.getElementById('searchResults').style.display='none';});
+        loadCSV();
+    });
+
+    function loadCSV() {
+        Papa.parse('Hummingbird_Master_Combined_v6.csv', {
+            download:true, header:true, skipEmptyLines:true,
+            complete:function(res) {
+                allData = res.data.map(fixRow);
+                allData.forEach(function(r) {
+                    if (!r.distress_category || r.distress_category.trim() === '') {
+                        r.distress_category = r.distress_category_990 || '';
+                    }
+                    var catMap = {'High Risk':'High', 'Severe Distress':'Critical', 'Low Risk':'Low', 'Moderate Risk':'Moderate'};
+                    if (catMap[r.distress_category]) r.distress_category = catMap[r.distress_category];
+                    if (!r.distress_score || r.distress_score === '') {
+                        r.distress_score = r.distress_score_990 || '';
+                    }
+                    if (!r.data_completeness_pct || r.data_completeness_pct === '') {
+                        r.data_completeness_pct = r.data_completeness_990 || '';
+                    }
+                });
+
+                plotData = allData.filter(function(r) {
+                    var lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+                    return !isNaN(lat) && !isNaN(lng);
+                });
+
+                var nIPEDS  = plotData.filter(function(r){return r.data_source==='IPEDS'}).length;
+                var n990    = plotData.filter(function(r){return r.data_source==='Hummingbird_990'}).length;
+                var nClosed = plotData.filter(function(r){return isLikelyClosed(r)}).length;
+                document.getElementById('headerSubtitle').textContent =
+                    plotData.length.toLocaleString()+' plotted · '+nIPEDS.toLocaleString()+' IPEDS · '+
+                    n990.toLocaleString()+' 990s · '+nClosed+' likely closed';
+
+                showMarkers(plotData);
+                updateShortlistCount();
+            },
+            error:function(){alert('Error loading CSV. Place Hummingbird_Master_Combined_v5.csv in the same folder.');}
+        });
+    }
+
+    function getCompleteness(r) {
+        var cp = parseFloat(r.data_completeness_pct);
+        if (!isNaN(cp)) return cp;
+        var c990 = parseFloat(r.data_completeness_990);
+        if (!isNaN(c990)) return c990;
+        var cipeds = parseFloat(r.data_completeness_ipeds);
+        if (!isNaN(cipeds)) return cipeds;
+        return 50;
+    }
+
+    function getColor(r) {
+        // Closed always renders grey regardless of color mode
+        if (isLikelyClosed(r)) return '#3a3a4a';
+        if (colorMode === 'ml_risk') {
+            if (r.data_source !== 'IPEDS') return '#555';
+            return mlColors[r.risk_tier] || '#555';
+        }
+        if (colorMode === 'source') return sourceColors[r.data_source] || '#555';
+        if (colorMode === 'type') {
+            var it = r.institution_type || '';
+            if (it.indexOf('Public') >= 0) return '#3b82f6';
+            if (it.indexOf('Private Non-Profit') >= 0) return '#6c5ce7';
+            if (it.indexOf('Private For-Profit') >= 0) return '#ff6b35';
+            return typeColors[it] || '#8b8fa3';
+        }
+        return distressColors[r.distress_category] || '#555';
+    }
+
+    function showMarkers(data) {
+        markers.clearLayers();
+        var n=0, nIPEDS=0, n990=0, nCrit=0, nHigh=0, nClosed=0;
+        var showClosed = document.getElementById('showClosed').checked;
+
+        data.forEach(function(r){
+            var lat=parseFloat(r.latitude), lng=parseFloat(r.longitude);
+            if(isNaN(lat)||isNaN(lng)) return;
+
+            var closed = isLikelyClosed(r);
+            if(closed && !showClosed) return;  // respect toggle
+
+            n++;
+            if(r.data_source==='IPEDS') nIPEDS++;
+            if(r.data_source==='Hummingbird_990') n990++;
+            if(closed) nClosed++;
+            var cat=r.distress_category||'';
+            if(cat==='Critical') nCrit++;
+            if(cat==='High') nHigh++;
+
+            var color = getColor(r);
+
+            // Closed: small, faded, dashed border — visually subordinate
+            var opts;
+            if(closed) {
+                opts = {
+                    radius: 4,
+                    fillColor: color,
+                    color: '#5a5a72',
+                    weight: 1.5,
+                    opacity: 0.7,
+                    fillOpacity: 0.5,
+                    dashArray: '3,3'
+                };
+            } else {
+                var isCrit=cat==='Critical', isHigh=cat==='High';
+                opts = {
+                    radius: isCrit?8:isHigh?6:5,
+                    fillColor: color,
+                    color: isCrit?'#ff4757':isHigh?'#ff6b35':(r.data_source==='IPEDS'?'rgba(255,255,255,0.5)':'rgba(0,184,148,0.5)'),
+                    weight: isCrit?2.5:isHigh?1.5:1,
+                    opacity: 1,
+                    fillOpacity: 0.85
+                };
+            }
+
+            var m=L.circleMarker([lat,lng], opts);
+            // Gold ring overlay for shortlisted institutions
+            var showHighlight = document.getElementById('showShortlistHighlight');
+            if (showHighlight && showHighlight.checked && shortlist && shortlist.has(slKey(r))) {
+                opts.color = '#ffc107';
+                opts.weight = 3;
+                opts.opacity = 1;
+                m = L.circleMarker([lat,lng], opts);
+            }
+            m.bindPopup(function(){return createPopup(r);},{maxWidth:400});
+            markers.addLayer(m);
+        });
+
+        document.getElementById('sShowing').textContent  = n.toLocaleString();
+        document.getElementById('sIPEDS').textContent    = nIPEDS.toLocaleString();
+        document.getElementById('s990').textContent      = n990.toLocaleString();
+        document.getElementById('sCritical').textContent = nCrit;
+        document.getElementById('sHigh').textContent     = nHigh;
+        document.getElementById('sClosed').textContent   = nClosed;
+    }
+
+    function updateLegend(el) {
+        el=el||document.getElementById('mapLegend'); if(!el)return;
+        // Closed row appended to every mode
+        var closedRow='<div style="border-top:1px solid #2a2d37;margin:6px 0 4px"></div>'
+            +'<div class="row"><div class="ring" style="border-color:#5a5a72"></div>'
+            +'<span style="color:#5a5a72">Likely Closed</span></div>';
+        if(colorMode==='distress'){
+            el.innerHTML='<h4>Distress Score</h4>'
+                +'<div class="row"><div class="dot" style="background:#ff4757"></div>Critical (80+)</div>'
+                +'<div class="row"><div class="dot" style="background:#ff6b35"></div>High (60-80)</div>'
+                +'<div class="row"><div class="dot" style="background:#ffa502"></div>Moderate (40-60)</div>'
+                +'<div class="row"><div class="dot" style="background:#3b82f6"></div>Low (20-40)</div>'
+                +'<div class="row"><div class="dot" style="background:#10b981"></div>Healthy (0-20)</div>'
+                +closedRow;
+        } else if(colorMode==='ml_risk'){
+            el.innerHTML='<h4>ML Closure Risk (IPEDS)</h4>'
+                +'<div class="row"><div class="dot" style="background:#ff4757"></div>Critical (&gt;75%)</div>'
+                +'<div class="row"><div class="dot" style="background:#ff6b35"></div>High (55-75%)</div>'
+                +'<div class="row"><div class="dot" style="background:#ffa502"></div>Elevated (35-55%)</div>'
+                +'<div class="row"><div class="dot" style="background:#3b82f6"></div>Moderate (15-35%)</div>'
+                +'<div class="row"><div class="dot" style="background:#10b981"></div>Low (&lt;15%)</div>'
+                +'<div class="row"><div class="dot" style="background:#555"></div>990 (no ML data)</div>'
+                +closedRow;
+        } else if(colorMode==='source'){
+            el.innerHTML='<h4>Data Source</h4>'
+                +'<div class="row"><div class="dot" style="background:#6c5ce7"></div>IPEDS</div>'
+                +'<div class="row"><div class="dot" style="background:#00b894"></div>990</div>'
+                +closedRow;
+        } else {
+            el.innerHTML='<h4>Institution Type</h4>'
+                +'<div class="row"><div class="dot" style="background:#3b82f6"></div>Public</div>'
+                +'<div class="row"><div class="dot" style="background:#6c5ce7"></div>Private Non-Profit</div>'
+                +'<div class="row"><div class="dot" style="background:#ff6b35"></div>Private For-Profit</div>'
+                +'<div class="row"><div class="dot" style="background:#e056fd"></div>Religious</div>'
+                +'<div class="row"><div class="dot" style="background:#00b894"></div>Recreation/Camp</div>'
+                +'<div class="row"><div class="dot" style="background:#ffa502"></div>Youth Dev.</div>'
+                +'<div class="row"><div class="dot" style="background:#8b8fa3"></div>Other</div>'
+                +closedRow;
+        }
+    }
+
+    // --- Popup helpers (unchanged) ---
+    function v(val){if(val===null||val===undefined||val===''||val==='nan'||val==='NaN')return null;return val;}
+    function money(val){var x=v(val);if(x===null)return '<span class="pgrid-val na">—</span>';var n=parseFloat(x);if(isNaN(n))return '<span class="pgrid-val na">—</span>';var cls=n<0?'bad':'';if(Math.abs(n)>=1e9)return '<span class="pgrid-val '+cls+'">$'+(n/1e9).toFixed(1)+'B</span>';if(Math.abs(n)>=1e6)return '<span class="pgrid-val '+cls+'">$'+(n/1e6).toFixed(1)+'M</span>';if(Math.abs(n)>=1e3)return '<span class="pgrid-val '+cls+'">$'+(n/1e3).toFixed(0)+'K</span>';return '<span class="pgrid-val '+cls+'">$'+n.toFixed(0)+'</span>';}
+    function pct(val){var x=v(val);if(x===null)return '<span class="pgrid-val na">—</span>';var n=parseFloat(x);if(isNaN(n))return '<span class="pgrid-val na">—</span>';var cls=n>5?'good':n<-5?'bad':'';return '<span class="pgrid-val '+cls+'">'+(n>0?'+':'')+n.toFixed(1)+'%</span>';}
+    function trendArrow(val){var n=parseFloat(val);if(isNaN(n))return '<span class="trend-arrow flat">—</span>';if(n<-5)return '<span class="trend-arrow down">▼ '+n.toFixed(0)+'%</span>';if(n>5)return '<span class="trend-arrow up">▲ +'+n.toFixed(0)+'%</span>';return '<span class="trend-arrow flat">● '+n.toFixed(0)+'%</span>';}
+    function gi(label,valHtml){return '<div class="pgrid-item"><div class="pgrid-label">'+label+'</div>'+valHtml+'</div>';}
+    function num(val){var x=v(val);if(x===null)return '<div class="pgrid-val na">—</div>';var n=parseFloat(x);if(isNaN(n))return '<div class="pgrid-val na">—</div>';return '<div class="pgrid-val">'+n.toLocaleString(undefined,{maximumFractionDigits:0})+'</div>';}
+    function ratio(val){var x=v(val);if(x===null)return '<div class="pgrid-val na">—</div>';var n=parseFloat(x);if(isNaN(n))return '<div class="pgrid-val na">—</div>';return '<div class="pgrid-val '+(n<0?'bad':'')+'">'+n.toFixed(1)+'%</div>';}
+    function toggleSection(el){var c=el.nextElementSibling;if(!c)return;var sp=el.querySelector('span');if(c.style.display==='none'){c.style.display='';if(sp)sp.textContent='▼';}else{c.style.display='none';if(sp)sp.textContent='▶';}}
+
+    function createPopup(r) {
+        var name=r.institution_name||'Unknown', cat=r.distress_category||'';
+        var ds=parseFloat(r.distress_score), source=r.data_source||'', isIPEDS=source==='IPEDS';
+        var closed=isLikelyClosed(r);
+
+        // Head class — closed gets its own muted style
+        var headClass = closed ? 'likely-closed' : (cat==='Critical'?'critical':cat==='High'?'high':'');
+
+        // Badges
+        var badges='';
+        // Closed badge comes first, prominently
+        if(closed) {
+            badges+='<span class="pbadge closed-badge">⬡ Likely Closed</span>';
+        }
+        if(cat){
+            var bc=cat.toLowerCase();
+            // Label as "Last Known" score for closed institutions
+            var scoreLabel = closed ? 'Last Known: ' : 'Distress: ';
+            badges+='<span class="pbadge distress-'+bc+'">'+scoreLabel+(isNaN(ds)?cat:ds.toFixed(0)+' — '+cat)+'</span>';
+        }
+        badges+='<span class="pbadge source-'+(isIPEDS?'ipeds':'990')+'">'+(isIPEDS?'IPEDS':'990')+'</span>';
+        if(v(r.institution_type))badges+='<span class="pbadge" style="background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border)">'+r.institution_type+'</span>';
+        if(v(r.ntee_code))badges+='<span class="pbadge" style="background:rgba(162,155,254,0.1);color:var(--accent2);border:1px solid rgba(162,155,254,0.2)">NTEE: '+r.ntee_code+'</span>';
+        if(r.is_land_grant==='Land Grant Institution')badges+='<span class="pbadge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3)">🏛 Land Grant</span>';
+
+        // Location
+        var locParts=[];
+        if(v(r.address))locParts.push(r.address);
+        var cs=(r.city||'')+((r.city&&r.state)?', ':'')+(r.state||'')+(r.zip_code?' '+r.zip_code:'');
+        if(cs.trim())locParts.push(cs);
+
+        // Score meter — colour and label adapted for closed
+        var dsBar=!isNaN(ds)?ds:0;
+        var dsC = closed ? '#5a5a72' : (ds>=80?'var(--critical)':ds>=60?'var(--high)':ds>=40?'var(--elevated)':'var(--low)');
+        var ml=parseFloat(r.closure_risk_score), mlTier=r.risk_tier||'';
+        var meterLabel = closed ? 'Last Known Score' : 'Distress Score';
+        var meterHtml='<div class="score-meter"><div class="meter"><div class="meter-label">'+meterLabel+'</div>'
+            +'<div class="meter-val" style="color:'+dsC+'">'+(isNaN(ds)?'—':ds.toFixed(0))+'</div>'
+            +'<div class="meter-bar"><div class="meter-fill" style="width:'+dsBar+'%;background:'+dsC+'"></div></div>'
+            +'</div></div>';
+
+        // Closed notice banner — shown instead of ML analysis for closed schools
+        var closedNotice='';
+        if(closed) {
+            var scoreYr = v(r.score_year_ipeds);
+            closedNotice='<div class="closed-notice">'
+                +'<strong>⬡ Likely Closed Institution</strong>'
+                +'No enrollment or financial data found for 2023–2024. This institution may have ceased operations or stopped IPEDS reporting.'
+                +(scoreYr?'<div class="sub">Score and indicators above reflect last available data ('
+                    +parseFloat(scoreYr).toFixed(0)+'). Shown for reference only.</div>':'')
+                +'</div>';
+        }
+
+        // ML Closure Pattern Analysis — only for active IPEDS institutions
+        var wflags=r.ml_warning_flags||'';
+        var wHtml='';
+        if(isIPEDS && !closed && (!isNaN(ml) || wflags)){
+            var mlC=ml>=0.75?'var(--critical)':ml>=0.55?'var(--high)':ml>=0.35?'var(--elevated)':'var(--low)';
+            var mlPct=!isNaN(ml)?(ml*100).toFixed(0)+'%':'—';
+            var mlLabel=mlTier||'N/A';
+            var wi=wflags?wflags.split(' | ').filter(Boolean):[];
+            var flagCount=wi.length;
+            var sectionColor=ml>=0.55?'var(--critical)':ml>=0.35?'var(--elevated)':'var(--text2)';
+            wHtml='<div class="psection"><div class="psection-title" onclick="toggleSection(this)" style="cursor:pointer">';
+            wHtml+='<span style="color:'+sectionColor+'">🔬 Closure Pattern Analysis</span>';
+            if(!isNaN(ml))wHtml+=' <span style="font-size:9px;color:'+mlC+';font-family:var(--mono)">'+mlPct+' '+mlLabel+'</span>';
+            if(flagCount>0)wHtml+=' <span style="font-size:9px;color:var(--text2)">('+flagCount+' flag'+(flagCount>1?'s':'')+')</span>';
+            wHtml+=' <span style="float:right;font-size:8px">▶</span></div>';
+            wHtml+='<div style="display:none">';
+            if(!isNaN(ml)){
+                wHtml+='<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin:4px 0;font-size:10px;display:flex;justify-content:space-between;align-items:center">';
+                wHtml+='<span style="color:var(--text2)">ML Closure Risk Score</span>';
+                wHtml+='<span style="color:'+mlC+';font-weight:600;font-family:var(--mono)">'+mlPct+'</span></div>';
+                wHtml+='<div style="padding:2px 10px 8px;font-size:9px;color:var(--text2);line-height:1.4">Pattern-matching model trained on verified institutional closures (2014–2024). Identifies structural similarities to institutions that subsequently closed.</div>';
+            }
+            if(flagCount>0){
+                wHtml+='<div class="warning-list">';
+                wi.forEach(function(f){
+                    var clean=f.trim();
+                    var isCrit=clean.indexOf('CRITICAL')>=0;
+                    var cls=isCrit?'crit':'warn';
+                    var icon=isCrit?'\uD83D\uDD34':'\uD83D\uDFE1';
+                    wHtml+='<div class="warning-item '+cls+'"><span style="flex-shrink:0;font-size:12px">'+icon+'</span><span style="color:var(--text)">'+clean+'</span></div>';
+                });
+                wHtml+='</div>';
+            } else if(!isNaN(ml) && ml<0.15){
+                wHtml+='<div style="padding:6px 10px;font-size:10px;color:var(--low)">✓ No closure pattern flags detected</div>';
+            }
+            wHtml+='</div></div>';
+        }
+
+        // Completeness
+        var cp=getCompleteness(r);
+        var cpC = closed ? '#5a5a72' : (cp>=90?'var(--low)':cp>=75?'var(--moderate)':cp>=60?'var(--elevated)':'var(--critical)');
+        var compBar='<div class="completeness-row"><span class="cl">Data</span><div class="ct"><div class="cf" style="width:'+cp+'%;background:'+cpC+'"></div></div><span class="cv" style="color:'+cpC+'">'+cp.toFixed(0)+'%</span></div>';
+
+        // Data quality tier (990 only)
+        var tierHtml='';
+        if(!isIPEDS && v(r.data_quality_tier)){
+            var tier=r.data_quality_tier, tC=tier==='full_trend'?'var(--low)':tier==='snapshot'?'var(--elevated)':'var(--critical)';
+            tierHtml='<div style="padding:6px 10px;background:var(--bg);border-radius:6px;margin:4px 0;font-size:10px"><span style="color:var(--text2)">Data tier: </span><span style="color:'+tC+';font-weight:600">'+tier+'</span>';
+            if(v(r.n_filing_years))tierHtml+=' <span style="color:var(--text2)">· '+r.n_filing_years+' filing yrs</span>';
+            if(v(r.score_year_actual))tierHtml+=' <span style="color:var(--text2)">· scored '+r.score_year_actual+'</span>';
+            tierHtml+='</div>';
+        }
+
+        // Distress flags chips
+        var chips=[];
+        if(flag(r,'flag_enrollment_decline'))chips.push('📉 2yr Enrollment Decline');
+        if(flag(r,'flag_operating_losses')||flag(r,'flag_990_operating_loss'))chips.push('💸 Operating Loss (Current Year)');
+        if(flag(r,'flag_990_consecutive_losses'))chips.push('📉 Consecutive Annual Losses');
+        if(flag(r,'flag_negative_net_worth')||flag(r,'flag_990_negative_net_assets'))chips.push('🔴 Negative Net Assets');
+        if(flag(r,'flag_low_equity_ratio')||flag(r,'flag_990_low_equity'))chips.push('💳 Equity Ratio Below 30%');
+        if(flag(r,'flag_high_debt')||flag(r,'flag_990_high_debt'))chips.push('🏦 Debt Exceeds 50% of Assets');
+        if(flag(r,'flag_990_revenue_decline_1yr'))chips.push('📉 1yr Revenue Decline');
+        if(flag(r,'flag_990_revenue_decline_2yr'))chips.push('📉 2yr Revenue Decline');
+        if(flag(r,'flag_high_land_potential'))chips.push({t:'🌟 High Land Value Potential',p:1});
+        else if(flag(r,'flag_land_potential'))chips.push({t:'🌱 Land Asset Potential',p:1});
+        var chHtml='';
+        if(chips.length){chHtml='<div class="chip-row" style="margin:8px 0">';chips.forEach(function(c){chHtml+=typeof c==='object'?'<span class="chip pos">'+c.t+'</span>':'<span class="chip">'+c+'</span>';});chHtml+='</div>';}
+
+        // Subdomain bars
+        var subHtml='';
+        function subBar(subs,maxV){
+            var h='<div class="psection"><div class="psection-title" onclick="toggleSection(this)">📊 Distress Subdomains <span style="float:right;font-size:8px">▼</span></div><div>';
+            subs.forEach(function(s){var val=parseFloat(s[1]);if(isNaN(val))return;var p=Math.min(val/maxV*100,100);var c=val>=(maxV*0.67)?'var(--critical)':val>=(maxV*0.4)?'var(--elevated)':'var(--low)';
+                h+='<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:10px"><span style="width:70px;color:var(--text2)">'+s[0]+'</span><div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:'+p+'%;height:100%;background:'+c+';border-radius:3px"></div></div><span style="width:24px;text-align:right;font-family:var(--mono);font-size:9px">'+val.toFixed(0)+'</span></div>';
+            });return h+'</div></div>';}
+        if(isIPEDS){
+            var sd=[['Solvency',r.solvency_score_ipeds],['Liquidity',r.liquidity_score_ipeds],['Operating',r.operating_score_ipeds],['Enrollment',r.enrollment_score_ipeds],['Academic',r.academic_score_ipeds],['Demand',r.demand_score_ipeds],['Trend',r.trend_score_ipeds]];
+            if(sd.some(function(s){return !isNaN(parseFloat(s[1]))}))subHtml=subBar(sd,15);
+        } else {
+            var sd=[['Solvency',r.solvency_score_990],['Liquidity',r.liquidity_score_990],['Operating',r.operating_score_990],['Trend',r.trend_score_990],['Red Flags',r.red_flag_score_990]];
+            if(sd.some(function(s){return !isNaN(parseFloat(s[1]))}))subHtml=subBar(sd,20);
+        }
+
+        // Financials
+        var r24=parseFloat(r.revenue_2024)||0,r23=parseFloat(r.revenue_2023)||0,r22=parseFloat(r.revenue_2022)||0,mx=Math.max(r24,r23,r22,1);
+        var fin='<div class="psection"><div class="psection-title" onclick="toggleSection(this)">💰 Financials <span style="float:right;font-size:8px">▼</span></div><div><div class="pgrid">';
+        fin+=gi('Revenue 2024',money(r.revenue_2024))+gi('Expenses 2024',money(r.expenses_2024));
+        fin+=gi('Net Income',money(r.net_income_2024))+gi('Net Assets',money(r.net_assets_2024));
+        fin+=gi('Total Assets',money(r.assets_2024))+gi('Liabilities',money(r.liabilities_2024));
+        fin+=gi('Equity Ratio',ratio(r.equity_ratio))+gi('Op. Margin',ratio(r.operating_margin));
+        fin+=gi('Debt Ratio',ratio(r.debt_ratio))+gi('Rev 2yr Δ',pct(r.revenue_2yr_pct));
+        if(isIPEDS){fin+=gi('Tuition Dep.',ratio(r.tuition_dependency));if(v(r.endowment_per_fte))fin+=gi('Endow./FTE',money(r.endowment_per_fte));}
+        if(v(r.long_term_debt))fin+=gi('LT Debt',money(r.long_term_debt));
+        // Revenue bar chart
+        var revBars=[{yr:'2022',val:r22,prev:null},{yr:'2023',val:r23,prev:r22},{yr:'2024',val:r24,prev:r23}];
+        fin+='</div>';
+        if(mx>1){
+            var CHART_H=56;
+            fin+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">';
+            fin+='<div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Revenue Trend (2022–2024)</div>';
+            fin+='<div style="display:flex;align-items:flex-end;gap:8px;height:'+(CHART_H+30)+'px;padding-top:18px;box-sizing:border-box">';
+            revBars.forEach(function(b){
+                if(b.val<=0)return;
+                var px=Math.max(Math.round(b.val/mx*CHART_H),4);
+                var barC=b.prev===null?'var(--accent2)':(b.val>=b.prev?'var(--low)':'var(--critical)');
+                var lbl=b.val>=1e9?'$'+(b.val/1e9).toFixed(1)+'B':b.val>=1e6?'$'+(b.val/1e6).toFixed(0)+'M':'$'+(b.val/1e3).toFixed(0)+'K';
+                fin+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:100%;justify-content:flex-end">';
+                fin+='<div style="font-size:8px;color:var(--text2);font-family:var(--mono);white-space:nowrap;flex-shrink:0">'+lbl+'</div>';
+                fin+='<div style="width:100%;height:'+px+'px;background:'+barC+';border-radius:3px 3px 0 0;flex-shrink:0"></div>';
+                fin+='<div style="font-size:9px;color:var(--text2);flex-shrink:0">'+b.yr+'</div>';
+                fin+='</div>';
+            });
+            fin+='</div></div>';
+        }
+        fin+='</div></div>';
+
+        // Enrollment (IPEDS only)
+        var enr='';
+        if(isIPEDS){
+            enr='<div class="psection"><div class="psection-title" onclick="toggleSection(this)">📊 Enrollment & Admissions <span style="float:right;font-size:8px">▼</span></div><div><div class="pgrid">';
+            enr+=gi('Total 2024',num(r.enrollment_2024));
+            enr+=gi('1yr Δ','<div class="pgrid-val">'+trendArrow(r.enrollment_yoy_pct)+'</div>');
+            enr+=gi('Retention',ratio(r.retention_rate))+gi('Graduation',ratio(r.graduation_rate));
+            if(v(r.admission_rate))enr+=gi('Admit Rate',ratio(r.admission_rate));
+            if(v(r.yield_rate))enr+=gi('Yield Rate',ratio(r.yield_rate));
+            if(v(r.tuition_2025))enr+=gi('Tuition \'25',money(r.tuition_2025));
+            if(v(r.student_faculty_ratio))enr+=gi('Stu:Fac','<div class="pgrid-val">'+r.student_faculty_ratio+':1</div>');
+            enr+='</div>';
+            var e22=parseFloat(r.enrollment_2022)||0,e23=parseFloat(r.enrollment_2023)||0,e24=parseFloat(r.enrollment_2024)||0,eMax=Math.max(e22,e23,e24,1);
+            if(eMax>1){
+                var eBars=[{yr:'2022',val:e22,prev:null},{yr:'2023',val:e23,prev:e22},{yr:'2024',val:e24,prev:e23}];
+                enr+='<div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">';
+                enr+='<div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Enrollment Trend (2022–2024)</div>';
+                var ECHART_H=56;
+                enr+='<div style="display:flex;align-items:flex-end;gap:8px;height:'+(ECHART_H+30)+'px;padding-top:18px;box-sizing:border-box">';
+                eBars.forEach(function(b){
+                    if(b.val<=0)return;
+                    var px=Math.max(Math.round(b.val/eMax*ECHART_H),4);
+                    var barC=b.prev===null?'var(--accent2)':(b.val>=b.prev?'var(--low)':'var(--critical)');
+                    var lbl=b.val>=1000?(b.val/1000).toFixed(1)+'k':Math.round(b.val).toString();
+                    enr+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:100%;justify-content:flex-end">';
+                    enr+='<div style="font-size:8px;color:var(--text2);font-family:var(--mono);white-space:nowrap;flex-shrink:0">'+lbl+'</div>';
+                    enr+='<div style="width:100%;height:'+px+'px;background:'+barC+';border-radius:3px 3px 0 0;flex-shrink:0"></div>';
+                    enr+='<div style="font-size:9px;color:var(--text2);flex-shrink:0">'+b.yr+'</div>';
+                    enr+='</div>';
+                });
+                enr+='</div></div>';
+            }
+            enr+='</div></div>';
+        }
+
+        // Property
+        var prop='<div class="psection"><div class="psection-title" onclick="toggleSection(this)">\uD83C\uDFD7 Property & Land <span style="float:right;font-size:8px">\u25BC</span></div><div><div class="pgrid">';
+        var hasScraper=v(r.scraper_acres),hasOSM=v(r.osm_acres),hasHIFLD=v(r.hifld_acres),hasPrimary=v(r.acreage_primary),is990=r.data_source==='Hummingbird_990';
+        if(hasPrimary&&!is990){
+            var pVal=parseFloat(r.acreage_primary).toLocaleString(undefined,{maximumFractionDigits:1});
+            var pSrc=r.acreage_primary_source==='HIFLD'?'HIFLD':r.acreage_primary_source==='OSM'?'OSM':'Scraper';
+            var pConf=r.acreage_primary_source==='HIFLD'?'polygon':r.acreage_primary_source==='OSM'?r.osm_confidence:r.scraper_confidence;
+            var pCol=pConf==='HIGH'?'var(--low)':pConf==='MEDIUM'?'var(--elevated)':'var(--text2)';
+            var aHtml='<div class="pgrid-val">'+pVal+'</div><div style="font-size:9px;color:'+pCol+';margin-top:2px">'+pSrc+' \u00b7 '+pConf+'</div>';
+            if(hasHIFLD&&r.acreage_primary_source!=='HIFLD'){aHtml+='<div style="font-size:9px;color:var(--text2);margin-top:3px">HIFLD: '+parseFloat(r.hifld_acres).toLocaleString(undefined,{maximumFractionDigits:1})+' ac · polygon</div>';}
+            if(hasScraper&&hasOSM){var secSrc=r.acreage_primary_source==='OSM'?'Scraper':'OSM';var secVal=r.acreage_primary_source==='OSM'?parseFloat(r.scraper_acres).toLocaleString(undefined,{maximumFractionDigits:1}):parseFloat(r.osm_acres).toLocaleString(undefined,{maximumFractionDigits:1});var secConf=r.acreage_primary_source==='OSM'?r.scraper_confidence:r.osm_confidence;aHtml+='<div style="font-size:9px;color:var(--text2);margin-top:3px">Alt ('+secSrc+'): '+secVal+' ac \u00b7 '+secConf+'</div>';}
+            if(v(r.acreage_conflict_flag))aHtml+='<div style="font-size:9px;color:var(--high);margin-top:3px">\u26a0 '+r.acreage_conflict_flag+'</div>';
+            if(v(r.scraper_source)){var ss=r.scraper_source.length>50?r.scraper_source.substring(0,50)+'\u2026':r.scraper_source;var ssH=r.scraper_source.startsWith('http')?'<a href="'+r.scraper_source+'" target="_blank" style="color:var(--accent2);text-decoration:none">'+ss+'</a>':ss;aHtml+='<div style="font-size:9px;color:var(--text2);margin-top:3px">Source: '+ssH+'</div>';}
+            prop+=gi('Acres',aHtml);
+        }else if(is990&&(hasScraper||hasOSM)){
+            if(hasScraper){var sV=parseFloat(r.scraper_acres).toLocaleString(undefined,{maximumFractionDigits:1});var sC=r.scraper_confidence||'';var sCl=sC==='HIGH'?'var(--low)':sC==='MEDIUM'?'var(--elevated)':'var(--text2)';var sH='<div class="pgrid-val">'+sV+'</div><div style="font-size:9px;color:'+sCl+';margin-top:2px">Scraper \u00b7 '+sC+'</div>';if(v(r.scraper_source)){var ss2=r.scraper_source.length>50?r.scraper_source.substring(0,50)+'\u2026':r.scraper_source;sH+='<div style="font-size:9px;color:var(--text2);margin-top:2px">'+(r.scraper_source.startsWith('http')?'<a href="'+r.scraper_source+'" target="_blank" style="color:var(--accent2);text-decoration:none">'+ss2+'</a>':ss2)+'</div>';}prop+=gi('Acres (Scraper)',sH);}
+            if(hasOSM){var oV=parseFloat(r.osm_acres).toLocaleString(undefined,{maximumFractionDigits:1});var oC=r.osm_confidence||'';var oCl=oC==='HIGH'?'var(--low)':oC==='MEDIUM'?'var(--elevated)':'var(--text2)';var oH='<div class="pgrid-val">'+oV+'</div><div style="font-size:9px;color:'+oCl+';margin-top:2px">OSM \u00b7 '+oC+'</div>';if(v(r.osm_feature_name))oH+='<div style="font-size:9px;color:var(--text2);margin-top:2px">Feature: '+r.osm_feature_name+'</div>';prop+=gi('Acres (OSM)',oH);}
+            if(v(r.acreage_conflict_flag))prop+=gi('\u26a0 Conflict','<div style="font-size:9px;color:var(--high)">'+r.acreage_conflict_flag+'</div>');
+        }else{
+            prop+=gi('Acreage','<div class="pgrid-val" style="color:var(--text2);font-style:italic;font-family:var(--font)">Not yet verified</div>');
+        }
+        if(v(r.land_book_value))prop+=gi('Land Value',money(r.land_book_value));
+        if(v(r.plant_property_equipment))prop+=gi('PP&E',money(r.plant_property_equipment));
+        if(v(r.long_term_debt))prop+=gi('LT Debt',money(r.long_term_debt));
+
+        // Land Intensity Metrics — only show if we have a valid acreage figure
+        var _acres=parseFloat(r.acreage_primary)||parseFloat(r.scraper_acres)||parseFloat(r.osm_acres);
+        if(_acres>0){
+            var _rev=parseFloat(r.revenue_2024),_enr=parseFloat(r.enrollment_2024),_staff=parseFloat(r.fte_staff);
+            var _ppe=parseFloat(r.plant_property_equipment);
+            var hasIntensity=(!isNaN(_rev)&&_rev>0)||(!isNaN(_enr)&&_enr>0)||(!isNaN(_staff)&&_staff>0)||(!isNaN(_ppe)&&_ppe>0);
+            if(hasIntensity){
+                prop+='</div><div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px;border-top:1px solid var(--border);padding-top:8px">Land Intensity Metrics</div><div class="pgrid">';
+                if(!isNaN(_rev)&&_rev>0){
+                    var rpa=_rev/_acres;
+                    var rpaFmt=rpa>=1e6?'$'+(rpa/1e6).toFixed(2)+'M':rpa>=1e3?'$'+(rpa/1e3).toFixed(1)+'K':'$'+rpa.toFixed(0);
+                    prop+=gi('Revenue / Acre','<div class="pgrid-val">'+rpaFmt+'</div><div style="font-size:9px;color:var(--text2);margin-top:2px">per acre · FY2024</div>');
+                }
+                if(!isNaN(_enr)&&_enr>0){
+                    var epa=(_enr/_acres).toFixed(2);
+                    prop+=gi('Students / Acre','<div class="pgrid-val">'+parseFloat(epa).toLocaleString(undefined,{maximumFractionDigits:2})+'</div><div style="font-size:9px;color:var(--text2);margin-top:2px">headcount / acre</div>');
+                }
+                if(!isNaN(_staff)&&_staff>0){
+                    var fpa=(_staff/_acres).toFixed(2);
+                    prop+=gi('Faculty / Acre','<div class="pgrid-val">'+parseFloat(fpa).toLocaleString(undefined,{maximumFractionDigits:2})+'</div><div style="font-size:9px;color:var(--text2);margin-top:2px">FTE staff / acre</div>');
+                }
+                if(!isNaN(_ppe)&&_ppe>0){
+                    var pppa=_ppe/_acres;
+                    var pppaFmt=pppa>=1e6?'$'+(pppa/1e6).toFixed(2)+'M':pppa>=1e3?'$'+(pppa/1e3).toFixed(1)+'K':'$'+pppa.toFixed(0);
+                    prop+=gi('PP&E / Acre','<div class="pgrid-val">'+pppaFmt+'</div><div style="font-size:9px;color:var(--text2);margin-top:2px">plant value / acre</div>');
+                }
+            }
+        }
+
+        prop+='</div></div></div>';
+
+        // Identifiers (collapsed)
+        var ids='<div class="psection"><div class="psection-title" onclick="toggleSection(this)">🏷 Identifiers <span style="float:right;font-size:8px">▶</span></div><div style="display:none"><div class="pgrid">';
+        if(v(r.unitid))ids+=gi('UNITID','<div class="pgrid-val">'+r.unitid+'</div>');
+        if(v(r.ein))ids+=gi('EIN','<div class="pgrid-val">'+r.ein+'</div>');
+        if(v(r.ntee_code))ids+=gi('NTEE','<div class="pgrid-val">'+r.ntee_code+'</div>');
+        if(v(r.subsection_code_bmf))ids+=gi('501(c)','<div class="pgrid-val">§'+r.subsection_code_bmf+'</div>');
+        if(v(r.ruling_date))ids+=gi('Ruling Date','<div class="pgrid-val">'+r.ruling_date+'</div>');
+        if(v(r.eo_status_bmf))ids+=gi('EO Status','<div class="pgrid-val">'+r.eo_status_bmf+'</div>');
+        if(v(r.county))ids+=gi('County','<div class="pgrid-val">'+r.county+'</div>');
+        if(v(r.urbanization))ids+=gi('Locale','<div class="pgrid-val" style="font-size:10px">'+r.urbanization+'</div>');
+        if(v(r.fte_staff))ids+=gi('FTE Staff',num(r.fte_staff));
+        if(v(r.filing_type_primary))ids+=gi('Filing Type','<div class="pgrid-val">'+r.filing_type_primary+'</div>');
+        if(v(r.affiliation))ids+=gi('Affiliation','<div class="pgrid-val" style="font-size:10px">'+r.affiliation+'</div>');
+        ids+='</div></div></div>';
+
+        // Assemble — closed name is dimmed
+        var nameHtml = closed ? '<h3 class="dimmed">⬡ '+name+'</h3>' : '<h3>'+name+'</h3>';
+        var uid = r.unitid ? ('ipeds_' + r.unitid) : ('ein_' + (r.ein || ''));
+        var _attr = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); };
+
+        // ⭐ Star button
+        var _isStarred = shortlist.has(slKey(r));
+        var starBtnHtml = '<button class="popup-star-btn'+(_isStarred?' starred':'')+'"'
+            +' data-name="'+_attr(r.institution_name||'')+'"'
+            +' data-city="'+_attr(r.city||'')+'"'
+            +' data-state="'+_attr(r.state||'')+'"'
+            +' onclick="toggleStarFromPopup(this)"'
+            +' title="'+(_isStarred?'Remove from shortlist':'Add to shortlist')+'">⭐</button>';
+
+        // 🌿 Land button
+        var _landData = (typeof OSM_LAND_DATA !== 'undefined') ? ((OSM_LAND_DATA[(r.institution_name||'')+'||'+(r.city||'')+'||'+(r.state||'')]||null)||null) : null;
+        var landBtnHtml = '<button class="popup-land-btn'+(_landData?' has-data':' no-data')+'"'
+            +' data-name="'+_attr(r.institution_name||'')+'"'
+            +' data-city="'+_attr(r.city||'')+'"'
+            +' data-state="'+_attr(r.state||'')+'"'
+            +(_landData?' onclick="openLandPanelFromBtn(this)"':'')+
+            +' title="'+(_landData?'View land environment data':'No land data scraped yet')+'">🌿</button>';
+
+        // 📰 News button
+        var newsBtnHtml = '<button class="popup-news-btn"'
+            + ' data-uid="'    + _attr(uid) + '"'
+            + ' data-name="'   + _attr(r.institution_name||'') + '"'
+            + ' data-city="'   + _attr(r.city||'') + '"'
+            + ' data-state="'  + _attr(r.state||'') + '"'
+            + ' data-source="' + _attr(r.data_source||'') + '"'
+            + ' data-ein="'    + _attr(r.ein||'') + '"'
+            + ' onclick="openNewsPanelFromBtn(this)"'
+            + ' title="Load news &amp; org data">&#128240;</button>';
+        return '<div class="popup-wrap">'
+            +'<div class="popup-head '+headClass+'">'+nameHtml
+            +'<div class="popup-btn-group">'+starBtnHtml+landBtnHtml+newsBtnHtml+'</div>'
+            +'<div class="popup-loc">'+locParts.join('<br>')+'</div>'
+            +'<div class="popup-badges">'+badges+'</div></div>'
+            +'<div class="popup-content" style="padding:12px;flex:1;overflow-y:auto;min-height:0">'
+            +meterHtml+closedNotice+compBar+tierHtml+chHtml+subHtml+wHtml+fin+enr+prop+ids
+            +'</div></div>';
+    }
+
+    // Search
+    function doSearch(q){
+        var el=document.getElementById('searchResults');
+        if(q.length<2){el.style.display='none';return;}
+        var ql=q.toLowerCase();
+        var hits=plotData.filter(function(r){return (r.institution_name||'').toLowerCase().indexOf(ql)>=0;}).slice(0,8);
+        if(!hits.length){el.innerHTML='<div class="sr-item"><span class="sr-meta">No results</span></div>';el.style.display='block';return;}
+        el.innerHTML=hits.map(function(r,i){
+            var cat=r.distress_category||'';
+            var closedTag = isLikelyClosed(r) ? ' · <span style="color:#5a5a72">Likely Closed</span>' : '';
+            return '<div class="sr-item" onclick="jumpTo('+i+')">'
+                +'<div class="sr-name">'+(isLikelyClosed(r)?'⬡ ':'')+r.institution_name+'</div>'
+                +'<div class="sr-meta">'+(r.city||'')+', '+(r.state||'')+' · '+(r.data_source||'')
+                +(cat?' · <span style="color:'+(distressColors[cat]||'#888')+'">'+cat+'</span>':'')
+                +closedTag+'</div></div>';
+        }).join('');
+        el.style.display='block';
+        el._hits=hits;
+    }
+    function jumpTo(i){
+        var el=document.getElementById('searchResults');
+        var r=el._hits[i];if(!r)return;
+        var lat=parseFloat(r.latitude),lng=parseFloat(r.longitude);
+        if(!isNaN(lat)&&!isNaN(lng)){
+            map.setView([lat,lng],14);
+            markers.eachLayer(function(l){var ll=l.getLatLng();if(Math.abs(ll.lat-lat)<0.0001&&Math.abs(ll.lng-lng)<0.0001)l.openPopup();});
+        }
+        el.style.display='none';
+        document.getElementById('searchInput').value=r.institution_name||'';
+    }
+
+    // ── Shortlist — Enhanced Pipeline ────────────────────────────────────────
+    // Composite key to avoid name collisions (same pattern as Python pipeline)
+    function slKey(r) { return (r.institution_name||'')+'||'+(r.city||'')+'||'+(r.state||''); }
+    function slKeyParts(key) { var p=key.split('||'); return {name:p[0]||'',city:p[1]||'',state:p[2]||''}; }
+    function slFindRecord(key) {
+        var p = slKeyParts(key);
+        return allData.find(function(d){ return d.institution_name===p.name && (d.city||'')===p.city && (d.state||'')===p.state; })
+            || allData.find(function(d){ return d.institution_name===p.name; }) || {};
+    }
+    var shortlist = new Set(JSON.parse(localStorage.getItem('hb_shortlist') || '[]'));
+    var shortlistBatches = JSON.parse(localStorage.getItem('hb_sl_batches') || '[]');
+    var shortlistMode = 'all';
+    var slViewMode = 'batches';
+
+    function saveShortlist() {
+        localStorage.setItem('hb_shortlist', JSON.stringify([...shortlist]));
+        localStorage.setItem('hb_sl_batches', JSON.stringify(shortlistBatches));
+    }
+    function updateShortlistCount() {
+        document.getElementById('slCount').textContent = shortlist.size;
+    }
+
+    // ── Composite Opportunity Score ────────────────────────────────────────
+    function getAcreageSafe(r) {
+        return parseFloat(r.acreage_primary) || parseFloat(r.scraper_acres) || parseFloat(r.osm_acres) || 0;
+    }
+    function getEnvScore(r) {
+        var key = (r.institution_name||'')+'||'+(r.city||'')+'||'+(r.state||'');
+        var osm = (typeof OSM_LAND_DATA !== 'undefined') ? OSM_LAND_DATA[key] : null;
+        return (osm && osm.env_score && osm.env_score.score != null) ? osm.env_score.score : null;
+    }
+    function computeCompositeScore(r) {
+        // LAND SCORE (40% weight) — acreage magnitude + env quality + land flags
+        var acres = getAcreageSafe(r);
+        var acresPts = acres >= 500 ? 30 : acres >= 200 ? 25 : acres >= 100 ? 20 : acres >= 50 ? 15 : acres >= 20 ? 10 : acres > 0 ? 5 : 0;
+        var envRaw = getEnvScore(r);
+        var envPts = envRaw != null ? Math.round(envRaw / 100 * 25) : 8; // fallback mid-score
+        var highLand = (r.flag_high_land_potential === '1') ? 15 : (r.flag_land_potential === '1') ? 8 : 0;
+        var landUrb = ((r.urbanization||'').split(':')[0].trim());
+        var landUrbPts = landUrb==='Rural' ? 15 : landUrb==='Town' ? 12 : landUrb==='Suburb' ? 7 : landUrb==='City' ? 3 : 8;
+        var landRaw = Math.min(100, acresPts + envPts + highLand + landUrbPts);
+
+        // URGENCY SCORE (35% weight) — distress + closure risk + flags
+        var ds = parseFloat(r.distress_score) || 0;
+        var cr = (parseFloat(r.closure_risk_score) || 0) * 100;
+        var urgBase = Math.min(50, ds * 0.5 + cr * 0.3);
+        var flagPts = 0;
+        if (r.flag_negative_net_worth==='1' || r.flag_990_negative_net_assets==='1') flagPts += 10;
+        if (r.flag_enrollment_decline==='1') flagPts += 8;
+        if (r.flag_operating_losses==='1' || r.flag_990_operating_loss==='1') flagPts += 8;
+        if (parseFloat(r.enrollment_yoy_pct) < -5) flagPts += 6;
+        var om = parseFloat(r.operating_margin);
+        if (!isNaN(om) && om < -10) flagPts += 8;
+        var urgRaw = Math.min(100, urgBase + flagPts);
+
+        // PARTNERSHIP READINESS (25% weight) — uses existing PR function
+        var pr = computePRScore(r);
+        var prRaw = pr ? pr.total : 40; // fallback mid-score
+
+        // COMPOSITE — land-weighted
+        var composite = Math.round(landRaw * 0.40 + urgRaw * 0.35 + prRaw * 0.25);
+        return {
+            composite: Math.min(100, composite),
+            land: Math.round(landRaw), urgency: Math.round(urgRaw), pr: Math.round(prRaw),
+            acres: acres, envScore: envRaw,
+            prObj: pr
+        };
+    }
+    function compositeColor(v) {
+        if (v >= 75) return '#00b894';
+        if (v >= 60) return '#10b981';
+        if (v >= 45) return '#ffa502';
+        if (v >= 30) return '#ff6b35';
+        return '#ff4757';
+    }
+    function compositeLabel(v) {
+        if (v >= 75) return 'Excellent';
+        if (v >= 60) return 'Strong';
+        if (v >= 45) return 'Moderate';
+        if (v >= 30) return 'Limited';
+        return 'Low';
+    }
+
+    // ── Batch management ──────────────────────────────────────────────────
+    function describeCurrentFilters() {
+        var parts = [];
+        var src = filters.source; if (src) parts.push(src);
+        var reg = filters.region; if (reg) parts.push(reg);
+        var st = document.getElementById('fState').value; if (st) parts.push(st);
+        var tp = document.getElementById('fType').value;
+        if (tp === '__higher_ed__') parts.push('Higher Ed');
+        else if (tp) parts.push(tp.replace(/Private Non-Profit \| /,'NP ').replace(/Private For-Profit \| /,'FP ').replace(/Public \| /,'Pub '));
+        var urb = document.getElementById('fUrban').value; if (urb) parts.push(urb);
+        var risk = document.getElementById('fRisk').value; if (risk) parts.push(risk.replace(/_/g,' '));
+        var acr = document.getElementById('fAcreage').value; if (acr) parts.push(acr === 'has_data' ? 'Has acreage' : acr+'+ ac');
+        return parts.length ? parts.join(' · ') : 'All institutions';
+    }
+    function addAllShownToShortlist() {
+        var data = lastFilteredData.length ? lastFilteredData : plotData;
+        var keys = data.map(function(r){ return slKey(r); }).filter(Boolean);
+        var added = 0;
+        keys.forEach(function(k) { if (!shortlist.has(k)) { shortlist.add(k); added++; } });
+        if (added === 0) { alert('All shown institutions are already in the shortlist.'); return; }
+        var batch = { id: Date.now(), label: describeCurrentFilters(), names: keys, ts: new Date().toLocaleString() };
+        shortlistBatches.push(batch);
+        saveShortlist();
+        updateShortlistCount();
+        renderShortlistPanel();
+    }
+    function removeBatch(batchId) {
+        var batch = shortlistBatches.find(function(b){ return b.id === batchId; });
+        if (!batch) return;
+        // Remove names that ONLY exist in this batch (not in other batches or individually starred)
+        var otherNames = new Set();
+        shortlistBatches.forEach(function(b) { if (b.id !== batchId) b.names.forEach(function(n){ otherNames.add(n); }); });
+        batch.names.forEach(function(n) { if (!otherNames.has(n)) shortlist.delete(n); });
+        shortlistBatches = shortlistBatches.filter(function(b){ return b.id !== batchId; });
+        saveShortlist();
+        updateShortlistCount();
+        renderShortlistPanel();
+        applyFilters();
+    }
+    function toggleBatch(el) {
+        el.closest('.sl-batch').classList.toggle('open');
+    }
+
+    // ── Panel rendering ───────────────────────────────────────────────────
+    function setSlView(tab, mode) {
+        slViewMode = mode;
+        document.querySelectorAll('.sl-view-tab').forEach(function(t){ t.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById('slBatchView').style.display = mode === 'batches' ? '' : 'none';
+        document.getElementById('slReportView').style.display = mode === 'report' ? '' : 'none';
+        if (mode === 'report') renderReport();
+    }
+    function renderShortlistPanel() {
+        renderBatchView();
+        if (slViewMode === 'report') renderReport();
+    }
+    function renderBatchView() {
+        var list = document.getElementById('slList');
+        if (!shortlist.size) {
+            list.innerHTML = '<div class="sl-empty"><div class="sl-empty-icon">\u2B50</div>Filter the map, then click<br><b>"Add All Shown"</b> to build your pipeline.</div>';
+            return;
+        }
+        var html = '';
+        // Show batches
+        shortlistBatches.forEach(function(batch) {
+            var liveCount = batch.names.filter(function(k){ return shortlist.has(k); }).length;
+            html += '<div class="sl-batch">'
+                + '<div class="sl-batch-hdr" onclick="toggleBatch(this)">'
+                + '<div class="sl-batch-label">' + batch.label + '</div>'
+                + '<span class="sl-batch-count">' + liveCount + '</span>'
+                + '<div class="sl-batch-remove" onclick="event.stopPropagation();removeBatch(' + batch.id + ')" title="Remove entire batch">\u2715</div>'
+                + '</div><div class="sl-batch-items"><div style="padding:4px 8px">';
+            batch.names.slice(0, 20).forEach(function(key) {
+                if (!shortlist.has(key)) return;
+                var p = slKeyParts(key);
+                var safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                html += '<div class="sl-item" onclick="flyToInstitution(\'' + safeKey + '\')" style="border-left-color:rgba(108,92,231,0.5);padding:4px 8px">'
+                    + '<div class="sl-item-name" style="font-size:10px">' + p.name + '<span style="color:var(--text2);font-weight:400;font-size:9px"> ' + [p.city,p.state].filter(Boolean).join(', ') + '</span></div>'
+                    + '<div class="sl-item-remove" onclick="event.stopPropagation();removeFromShortlist(\'' + safeKey + '\')">\u2715</div></div>';
+            });
+            if (batch.names.length > 20) html += '<div style="font-size:9px;color:var(--text2);padding:4px 8px">+' + (batch.names.length - 20) + ' more...</div>';
+            html += '</div></div></div>';
+        });
+        // Show individually starred (not in any batch)
+        var batchedKeys = new Set();
+        shortlistBatches.forEach(function(b){ b.names.forEach(function(k){ batchedKeys.add(k); }); });
+        var individuals = [...shortlist].filter(function(k){ return !batchedKeys.has(k); });
+        if (individuals.length) {
+            html += '<div style="font-size:9px;color:var(--text2);font-weight:600;margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.5px">Individually Starred</div>';
+            individuals.forEach(function(key) {
+                var r = slFindRecord(key);
+                var p = slKeyParts(key);
+                var meta = [p.city, p.state].filter(Boolean).join(', ');
+                var safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                html += '<div class="sl-item" onclick="flyToInstitution(\'' + safeKey + '\')">'
+                    + '<div><div class="sl-item-name">' + p.name + '</div><div class="sl-item-meta">' + meta + '</div></div>'
+                    + '<div class="sl-item-remove" onclick="event.stopPropagation();removeFromShortlist(\'' + safeKey + '\')">\u2715</div></div>';
+            });
+        }
+        list.innerHTML = html;
+    }
+
+    // ── Ranked Report ─────────────────────────────────────────────────────
+    var _slSortCol = 'composite', _slSortDir = -1;
+    function renderReport() {
+        var el = document.getElementById('slReport');
+        if (!shortlist.size) { el.innerHTML = '<div class="sl-empty">No institutions in shortlist.</div>'; return; }
+        var scored = [...shortlist].map(function(key) {
+            var r = slFindRecord(key);
+            var s = computeCompositeScore(r);
+            return { key: key, name: slKeyParts(key).name, r: r, s: s };
+        });
+        // Sort
+        scored.sort(function(a, b) {
+            var va, vb;
+            switch(_slSortCol) {
+                case 'composite': va = a.s.composite; vb = b.s.composite; break;
+                case 'land': va = a.s.land; vb = b.s.land; break;
+                case 'urgency': va = a.s.urgency; vb = b.s.urgency; break;
+                case 'pr': va = a.s.pr; vb = b.s.pr; break;
+                case 'acres': va = a.s.acres; vb = b.s.acres; break;
+                case 'distress': va = parseFloat(a.r.distress_score)||0; vb = parseFloat(b.r.distress_score)||0; break;
+                default: va = a.s.composite; vb = b.s.composite;
+            }
+            return (va - vb) * _slSortDir;
+        });
+        var thClick = function(col) { return ' onclick="sortSlReport(\'' + col + '\')" style="cursor:pointer"'; };
+        var arrow = function(col) { return _slSortCol === col ? (_slSortDir === -1 ? ' ▼' : ' ▲') : ''; };
+        var html = '<div class="sl-report-scroll"><table class="sl-report-tbl"><thead><tr>'
+            + '<th>#</th>'
+            + '<th>Institution</th>'
+            + '<th' + thClick('composite') + '>Score' + arrow('composite') + '</th>'
+            + '<th' + thClick('land') + '>Land' + arrow('land') + '</th>'
+            + '<th' + thClick('urgency') + '>Urgency' + arrow('urgency') + '</th>'
+            + '<th' + thClick('pr') + '>PR' + arrow('pr') + '</th>'
+            + '<th' + thClick('acres') + '>Acres' + arrow('acres') + '</th>'
+            + '<th' + thClick('distress') + '>Distress' + arrow('distress') + '</th>'
+            + '<th>Enr. Trend</th>'
+            + '<th>Op. Margin</th>'
+            + '</tr></thead><tbody>';
+        scored.forEach(function(item, i) {
+            var r = item.r, s = item.s;
+            var enrTrend = parseFloat(r.enrollment_yoy_pct); enrTrend = !isNaN(enrTrend) ? enrTrend.toFixed(1)+'%' : '—';
+            var opMarg = parseFloat(r.operating_margin); opMarg = !isNaN(opMarg) ? opMarg.toFixed(1)+'%' : '—';
+            var ds = parseFloat(r.distress_score); ds = !isNaN(ds) ? ds.toFixed(0) : '—';
+            var barW = Math.max(3, Math.round(s.composite * 0.5));
+            var safeName = (item.key||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+            html += '<tr onclick="flyToInstitution(\'' + safeName + '\')" style="cursor:pointer">'
+                + '<td class="rank-cell">' + (i+1) + '</td>'
+                + '<td class="name-cell">' + (r.institution_name||'—') + '<div class="name-sub">' + [r.city, r.state].filter(Boolean).join(', ') + '</div></td>'
+                + '<td><span style="color:' + compositeColor(s.composite) + ';font-weight:700">' + s.composite + '</span>'
+                + ' <span class="sl-composite-bar" style="background:' + compositeColor(s.composite) + ';width:' + barW + 'px"></span></td>'
+                + '<td style="color:#10b981">' + s.land + '</td>'
+                + '<td style="color:#ff6b35">' + s.urgency + '</td>'
+                + '<td style="color:#a29bfe">' + s.pr + '</td>'
+                + '<td>' + (s.acres > 0 ? s.acres.toLocaleString() : '—') + '</td>'
+                + '<td>' + ds + '</td>'
+                + '<td style="color:' + (enrTrend !== '—' && parseFloat(enrTrend) < 0 ? '#ff6b35' : 'var(--text)') + '">' + enrTrend + '</td>'
+                + '<td style="color:' + (opMarg !== '—' && parseFloat(opMarg) < 0 ? '#ff6b35' : 'var(--text)') + '">' + opMarg + '</td>'
+                + '</tr>';
+        });
+        html += '</tbody></table></div>';
+        // Summary stats
+        var avgComp = scored.length ? Math.round(scored.reduce(function(a,b){ return a + b.s.composite; }, 0) / scored.length) : 0;
+        var avgLand = scored.length ? Math.round(scored.reduce(function(a,b){ return a + b.s.land; }, 0) / scored.length) : 0;
+        var withAcreage = scored.filter(function(x){ return x.s.acres > 0; }).length;
+        var summary = '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+            + '<div style="flex:1;background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + compositeColor(avgComp) + '">' + avgComp + '</div><div style="font-size:8px;color:var(--text2)">Avg Score</div></div>'
+            + '<div style="flex:1;background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#10b981">' + avgLand + '</div><div style="font-size:8px;color:var(--text2)">Avg Land</div></div>'
+            + '<div style="flex:1;background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)">' + scored.length + '</div><div style="font-size:8px;color:var(--text2)">Institutions</div></div>'
+            + '<div style="flex:1;background:var(--surface2);border-radius:6px;padding:6px 8px;text-align:center"><div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text)">' + withAcreage + '</div><div style="font-size:8px;color:var(--text2)">With Acreage</div></div>'
+            + '</div>';
+        el.innerHTML = summary + html;
+    }
+    function sortSlReport(col) {
+        if (_slSortCol === col) _slSortDir *= -1;
+        else { _slSortCol = col; _slSortDir = -1; }
+        renderReport();
+    }
+
+    // ── Core shortlist functions ───────────────────────────────────────────
+    function toggleStarFromPopup(btn) {
+        var key = (btn.getAttribute('data-name')||'')+'||'+(btn.getAttribute('data-city')||'')+'||'+(btn.getAttribute('data-state')||'');
+        if (shortlist.has(key)) {
+            shortlist.delete(key);
+            btn.classList.remove('starred');
+            btn.title = 'Add to shortlist';
+        } else {
+            shortlist.add(key);
+            btn.classList.add('starred');
+            btn.title = 'Remove from shortlist';
+        }
+        saveShortlist();
+        updateShortlistCount();
+        renderShortlistPanel();
+        applyFilters();
+    }
+    function removeFromShortlist(key) {
+        shortlist.delete(key);
+        // Also remove from batches
+        shortlistBatches.forEach(function(b) { b.names = b.names.filter(function(n){ return n !== key; }); });
+        shortlistBatches = shortlistBatches.filter(function(b){ return b.names.length > 0; });
+        saveShortlist();
+        updateShortlistCount();
+        renderShortlistPanel();
+        applyFilters();
+    }
+    function clearShortlist() {
+        if (shortlist.size && !confirm('Clear all ' + shortlist.size + ' shortlisted institutions?')) return;
+        shortlist.clear();
+        shortlistBatches = [];
+        saveShortlist();
+        updateShortlistCount();
+        renderShortlistPanel();
+        applyFilters();
+    }
+    function setShortlistMode(mode) {
+        // Legacy — shortlist is now always-visible collapsible section
+        // No panel switching needed
+        renderShortlistPanel();
+    }
+    function flyToInstitution(key) {
+        var r = slFindRecord(key);
+        if (!r || !r.institution_name) return;
+        var lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+        if (isNaN(lat)||isNaN(lng)) return;
+        map.setView([lat, lng], 14);
+        markers.eachLayer(function(m) {
+            var ll = m.getLatLng();
+            if (Math.abs(ll.lat - lat) < 0.001 && Math.abs(ll.lng - lng) < 0.001) {
+                m.openPopup();
+            }
+        });
+    }
+
+    // ── CSV Export (legacy) ────────────────────────────────────────────────
+    function exportShortlistCSV() {
+        if (!shortlist.size) { alert('No institutions shortlisted.'); return; }
+        var COLS = ['rank','composite_score','land_score','urgency_score','pr_score',
+            'institution_name','data_source','institution_type','city','state',
+            'distress_category','distress_score','closure_risk_score','risk_tier',
+            'revenue_2024','expenses_2024','net_income_2024','assets_2024','liabilities_2024',
+            'equity_ratio','operating_margin','enrollment_2024','enrollment_yoy_pct',
+            'acreage_primary','scraper_acres','osm_acres','urbanization','latitude','longitude'];
+        var scored = [...shortlist].map(function(key) {
+            var r = slFindRecord(key);
+            var s = computeCompositeScore(r);
+            return { r: r, s: s };
+        }).sort(function(a,b){ return b.s.composite - a.s.composite; });
+        var rows = scored.map(function(item, i) {
+            var r = item.r, s = item.s;
+            r.rank = i + 1; r.composite_score = s.composite; r.land_score = s.land;
+            r.urgency_score = s.urgency; r.pr_score = s.pr;
+            return COLS.map(function(c){ return '"'+String(r[c]||'').replace(/"/g,'""')+'"'; }).join(',');
+        });
+        var csv = COLS.join(',') + '\n' + rows.join('\n');
+        var blob = new Blob([csv], {type:'text/csv'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'hb_shortlist_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+    }
+
+    // ── HTML Report Export ─────────────────────────────────────────────────
+    function exportShortlistReport() {
+        if (!shortlist.size) { alert('No institutions shortlisted.'); return; }
+        var scored = [...shortlist].map(function(key) {
+            var r = slFindRecord(key);
+            var s = computeCompositeScore(r);
+            return { name: slKeyParts(key).name, r: r, s: s };
+        }).sort(function(a,b){ return b.s.composite - a.s.composite; });
+
+        var avgComp = Math.round(scored.reduce(function(a,b){ return a+b.s.composite; },0)/scored.length);
+        var avgLand = Math.round(scored.reduce(function(a,b){ return a+b.s.land; },0)/scored.length);
+        var avgUrg = Math.round(scored.reduce(function(a,b){ return a+b.s.urgency; },0)/scored.length);
+        var withAcres = scored.filter(function(x){ return x.s.acres>0; }).length;
+        var totalAcres = scored.reduce(function(a,b){ return a+b.s.acres; },0);
+        var dateStr = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+        var tableRows = scored.map(function(item, i) {
+            var r=item.r, s=item.s;
+            var ds = parseFloat(r.distress_score); ds = !isNaN(ds)?ds.toFixed(0):'—';
+            var cr = parseFloat(r.closure_risk_score); cr = !isNaN(cr)?(cr*100).toFixed(0)+'%':'—';
+            var enr = parseFloat(r.enrollment_2024); enr = !isNaN(enr)?Math.round(enr).toLocaleString():'—';
+            var enrT = parseFloat(r.enrollment_yoy_pct); enrT = !isNaN(enrT)?enrT.toFixed(1)+'%':'—';
+            var rev = parseFloat(r.revenue_2024); rev = !isNaN(rev)?'$'+Math.round(rev/1e6).toLocaleString()+'M':'—';
+            var om = parseFloat(r.operating_margin); om = !isNaN(om)?om.toFixed(1)+'%':'—';
+            var env = s.envScore != null ? s.envScore.toFixed(0) : '—';
+            var cColor = compositeColor(s.composite);
+            return '<tr>'
+                +'<td style="text-align:center;font-weight:700;color:#a29bfe">'+(i+1)+'</td>'
+                +'<td style="font-weight:600">'+item.name+'<div style="font-size:10px;color:#8b8fa3;font-weight:400">'+[r.city,r.state].filter(Boolean).join(', ')
+                    +' · '+(r.institution_type||'').replace(/Private Non-Profit \| /,'NP ').replace(/Private For-Profit \| /,'FP ').replace(/Public \| /,'Pub ')+'</div></td>'
+                +'<td style="text-align:center"><span style="display:inline-block;padding:3px 8px;border-radius:4px;font-weight:700;font-size:13px;color:'+cColor+';background:'+cColor+'15">'+s.composite+'</span></td>'
+                +'<td style="text-align:center;color:#10b981">'+s.land+'</td>'
+                +'<td style="text-align:center;color:#ff6b35">'+s.urgency+'</td>'
+                +'<td style="text-align:center;color:#a29bfe">'+s.pr+'</td>'
+                +'<td style="text-align:right">'+(s.acres>0?Math.round(s.acres).toLocaleString():'—')+'</td>'
+                +'<td style="text-align:center">'+ds+'</td>'
+                +'<td style="text-align:center">'+cr+'</td>'
+                +'<td style="text-align:right">'+enr+'</td>'
+                +'<td style="text-align:center;color:'+(enrT!=='—'&&parseFloat(enrT)<0?'#ff6b35':'#e2e4e9')+'">'+enrT+'</td>'
+                +'<td style="text-align:right">'+rev+'</td>'
+                +'<td style="text-align:center;color:'+(om!=='—'&&parseFloat(om)<0?'#ff6b35':'#e2e4e9')+'">'+om+'</td>'
+                +'<td style="text-align:center">'+env+'</td>'
+                +'<td style="font-size:10px;color:#8b8fa3">'+(r.urbanization||'—')+'</td>'
+                +'</tr>';
+        }).join('');
+
+        var reportHtml = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">'
+            +'<title>Hummingbird — Opportunity Report</title>'
+            +'<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">'
+            +'<style>'
+            +':root{--bg:#0f1117;--surface:#181a20;--surface2:#1e2028;--border:#2a2d37;--text:#e2e4e9;--text2:#8b8fa3;--accent:#6c5ce7;--accent2:#a29bfe;--mono:"JetBrains Mono",monospace;--font:"DM Sans",sans-serif;}'
+            +'*{box-sizing:border-box;margin:0;padding:0}html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;}'
+            +'.page{max-width:1400px;margin:0 auto;padding:40px 32px}'
+            +'.hdr{display:flex;align-items:flex-end;gap:16px;margin-bottom:32px;border-bottom:1px solid var(--border);padding-bottom:20px}'
+            +'.hdr-logo{font-size:22px;font-weight:700;background:linear-gradient(135deg,var(--accent2),#74b9ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}'
+            +'.hdr-title{font-size:18px;font-weight:600;letter-spacing:-.3px}'
+            +'.hdr-date{font-size:11px;color:var(--text2);margin-left:auto;font-family:var(--mono)}'
+            +'.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:28px}'
+            +'.stat{background:var(--surface2);border-radius:8px;padding:14px;text-align:center}'
+            +'.stat-val{font-size:22px;font-weight:700;font-family:var(--mono)}'
+            +'.stat-lbl{font-size:10px;color:var(--text2);margin-top:4px}'
+            +'.methodology{background:var(--surface2);border-radius:8px;padding:14px 18px;margin-bottom:24px;font-size:11px;color:var(--text2);line-height:1.6}'
+            +'.methodology b{color:var(--text);font-weight:600}'
+            +'table{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)}'
+            +'thead th{padding:8px 10px;text-align:left;font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);background:var(--surface2);position:sticky;top:0;white-space:nowrap}'
+            +'tbody td{padding:8px 10px;border-bottom:1px solid rgba(42,45,55,.4)}'
+            +'tbody tr:hover td{background:rgba(255,255,255,.02)}'
+            +'.footer{font-size:10px;color:var(--text2);text-align:right;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)}'
+            +'@media print{body{background:#fff;color:#111}.page{padding:20px}table{font-size:9px}thead th{background:#f5f5f5;color:#333}tbody td{border-color:#ddd}.stat{border:1px solid #ddd}.methodology{border:1px solid #ddd}.hdr-logo{color:#6c5ce7;-webkit-text-fill-color:#6c5ce7}}'
+            +'</style></head><body><div class="page">'
+            +'<div class="hdr"><div class="hdr-logo">Hummingbird</div><div style="width:1px;height:20px;background:var(--border)"></div><div class="hdr-title">Opportunity Report</div><div class="hdr-date">'+dateStr+'</div></div>'
+            +'<div class="stats">'
+            +'<div class="stat"><div class="stat-val" style="color:var(--accent2)">'+scored.length+'</div><div class="stat-lbl">Institutions</div></div>'
+            +'<div class="stat"><div class="stat-val" style="color:'+compositeColor(avgComp)+'">'+avgComp+'</div><div class="stat-lbl">Avg Composite</div></div>'
+            +'<div class="stat"><div class="stat-val" style="color:#10b981">'+avgLand+'</div><div class="stat-lbl">Avg Land Score</div></div>'
+            +'<div class="stat"><div class="stat-val" style="color:#ff6b35">'+avgUrg+'</div><div class="stat-lbl">Avg Urgency</div></div>'
+            +'<div class="stat"><div class="stat-val">'+totalAcres.toLocaleString()+'</div><div class="stat-lbl">Total Acres</div></div>'
+            +'<div class="stat"><div class="stat-val">'+withAcres+'</div><div class="stat-lbl">With Acreage</div></div>'
+            +'</div>'
+            +'<div class="methodology"><b>Composite Score</b> = Land Potential (40%) + Urgency (35%) + Partnership Readiness (25%). '
+            +'Land potential includes acreage magnitude, OSM environment quality, land flags, and urbanization context. '
+            +'Urgency combines distress score, ML closure risk, and financial red flags. '
+            +'Partnership readiness evaluates state policy environment, funding landscape, and governance urgency.</div>'
+            +'<table><thead><tr>'
+            +'<th>#</th><th>Institution</th><th>Score</th><th>Land</th><th>Urgency</th><th>PR</th>'
+            +'<th style="text-align:right">Acres</th><th>Distress</th><th>ML Risk</th>'
+            +'<th style="text-align:right">Enrollment</th><th>Enr. Trend</th>'
+            +'<th style="text-align:right">Revenue</th><th>Op. Margin</th><th>Env Score</th><th>Urbanization</th>'
+            +'</tr></thead><tbody>'+tableRows+'</tbody></table>'
+            +'<div class="footer">Generated by Hummingbird Market Intelligence · '+dateStr+'</div>'
+            +'</div></body></html>';
+
+        var blob = new Blob([reportHtml], {type:'text/html'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'hb_opportunity_report_' + new Date().toISOString().slice(0,10) + '.html';
+        a.click();
+    }
+
+    // ── US Region lookup ───────────────────────────────────────────────────────
+    var STATE_REGION = {
+        'Maine':'Northeast','New Hampshire':'Northeast','Vermont':'Northeast',
+        'Massachusetts':'Northeast','Rhode Island':'Northeast','Connecticut':'Northeast',
+        'New York':'Northeast','New Jersey':'Northeast','Pennsylvania':'Northeast',
+        'Maryland':'Northeast','Delaware':'Northeast','District of Columbia':'Northeast',
+        'Virginia':'Southeast','West Virginia':'Southeast','North Carolina':'Southeast',
+        'South Carolina':'Southeast','Georgia':'Southeast','Florida':'Southeast',
+        'Alabama':'Southeast','Mississippi':'Southeast','Tennessee':'Southeast',
+        'Kentucky':'Southeast','Arkansas':'Southeast','Louisiana':'Southeast',
+        'Ohio':'Midwest','Indiana':'Midwest','Illinois':'Midwest','Michigan':'Midwest',
+        'Wisconsin':'Midwest','Minnesota':'Midwest','Iowa':'Midwest','Missouri':'Midwest',
+        'North Dakota':'Midwest','South Dakota':'Midwest','Nebraska':'Midwest','Kansas':'Midwest',
+        'Texas':'Southwest','Oklahoma':'Southwest','New Mexico':'Southwest','Arizona':'Southwest',
+        'Montana':'West','Idaho':'West','Wyoming':'West','Colorado':'West','Utah':'West',
+        'Nevada':'West','California':'West','Oregon':'West','Washington':'West',
+        'Alaska':'West','Hawaii':'West'
+    };
+
+    // ── Filter helpers ─────────────────────────────────────────────────────────
+    function toggleFilterSection(hdr) {
+        hdr.classList.toggle('open');
+        hdr.nextElementSibling.classList.toggle('open');
+    }
+    function toggleOsmPill(pill) {
+        pill.classList.toggle('active');
+        applyFilters();
+    }
+    function getAcreage(r) {
+        return parseFloat(r.acreage_primary) || parseFloat(r.scraper_acres) || parseFloat(r.osm_acres) || 0;
+    }
+
+    // Filters
+    function setTab(el,key){
+        el.parentElement.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+        el.classList.add('active');
+        filters[key]=el.dataset.val;
+        applyFilters();
+    }
+    function setColorMode(el){
+        document.querySelectorAll('.color-tab').forEach(function(t){t.classList.remove('active');});
+        el.classList.add('active');
+        colorMode=el.dataset.mode;
+        updateLegend();
+        applyFilters();
+    }
+    function applyFilters(){
+        var f={
+            source:filters.source,
+            region:filters.region||'',
+            state:document.getElementById('fState').value,
+            type:document.getElementById('fType').value,
+            urban:document.getElementById('fUrban').value,
+            risk:document.getElementById('fRisk').value,
+            special:document.getElementById('fSpecial').value,
+            acreage:document.getElementById('fAcreage').value
+        };
+        var showClosed = document.getElementById('showClosed').checked;
+        var osmActive = [...document.querySelectorAll('.osm-pill.active')].map(function(p){return p.dataset.cat;});
+        var osmMatchAll = document.querySelector('input[name="osmMatch"]:checked').value === 'all';
+        var baseData = plotData;
+        var filtered=baseData.filter(function(r){
+            var closed = isLikelyClosed(r);
+            if(closed && !showClosed && f.risk !== 'likely_closed') return false;
+            if(f.source&&r.data_source!==f.source)return false;
+            if(f.region){var reg=STATE_REGION[r.state]||'';if(reg!==f.region)return false;}
+            if(f.state&&r.state!==f.state)return false;
+            if(f.type){if(f.type==='__higher_ed__'){var it=r.institution_type||'';if(it.indexOf('Public |')<0&&it.indexOf('Private Non-Profit |')<0&&it.indexOf('Private For-Profit |')<0)return false;}else{if(r.institution_type!==f.type)return false;}}
+            if(f.urban){var urb=(r.urbanization||'').split(':')[0].trim();if(urb!==f.urban)return false;}
+            if(f.risk==='likely_closed') return closed;
+            if(f.risk==='active_only' && closed) return false;
+            if(f.risk==='critical'&&r.distress_category!=='Critical')return false;
+            if(f.risk==='high_plus'){var c=r.distress_category;if(c!=='Critical'&&c!=='High')return false;}
+            if(f.risk==='moderate_plus'){var c=r.distress_category;if(c!=='Critical'&&c!=='High'&&c!=='Moderate')return false;}
+            if(f.risk==='distressed_40'){var d=parseFloat(r.distress_score);if(isNaN(d)||d<40)return false;}
+            if(f.risk==='ml_critical'&&r.risk_tier!=='Critical')return false;
+            if(f.risk==='ml_high'&&r.risk_tier!=='Critical'&&r.risk_tier!=='High')return false;
+            if(f.risk==='ml_any_warnings'&&!(parseInt(r.ml_warning_count)>0))return false;
+            if(f.special==='operating_loss'&&!flag(r,'flag_operating_losses')&&!flag(r,'flag_990_operating_loss'))return false;
+            if(f.special==='negative_equity'&&!flag(r,'flag_negative_net_worth')&&!flag(r,'flag_990_negative_net_assets'))return false;
+            if(f.special==='high_debt'&&!flag(r,'flag_high_debt')&&!flag(r,'flag_990_high_debt'))return false;
+            if(f.special==='revenue_decline'&&!flag(r,'flag_990_revenue_decline_1yr')&&!flag(r,'flag_enrollment_decline'))return false;
+            if(f.special==='consecutive_losses'&&!flag(r,'flag_990_consecutive_losses'))return false;
+            if(f.special==='has_property'&&!(parseFloat(r.plant_property_equipment)>0))return false;
+            if(f.special==='land_grant'&&r.is_land_grant!=='Land Grant Institution')return false;
+            if(f.special==='high_land_potential'&&!flag(r,'flag_high_land_potential'))return false;
+            if(f.acreage==='has_data'){if(!getAcreage(r))return false;}
+            else if(f.acreage){if(getAcreage(r)<parseFloat(f.acreage))return false;}
+            if(osmActive.length>0){
+                var osmEntry=(typeof OSM_LAND_DATA!=='undefined')?((OSM_LAND_DATA[(r.institution_name||'')+'||'+(r.city||'')+'||'+(r.state||'')]||null)||null):null;
+                var cats=osmEntry?(osmEntry.categories||[]):[];
+                if(osmMatchAll){if(!osmActive.every(function(c){return cats.indexOf(c)>=0;}))return false;}
+                else{if(!osmActive.some(function(c){return cats.indexOf(c)>=0;}))return false;}
+            }
+            return true;
+        });
+        lastFilteredData = filtered;
+        showMarkers(filtered);
+    }
+    function resetFilters(){
+        filters={source:'',region:''};
+        document.querySelectorAll('#sidebar .tab').forEach(function(t,i){t.classList.toggle('active',i===0);});
+        document.getElementById('fState').value='';
+        document.getElementById('fType').value='';
+        document.getElementById('fUrban').value='';
+        document.getElementById('fRisk').value='';
+        document.getElementById('fSpecial').value='';
+        document.getElementById('fAcreage').value='';
+        document.getElementById('searchInput').value='';
+        document.getElementById('showClosed').checked=true;
+        document.querySelectorAll('.osm-pill.active').forEach(function(p){p.classList.remove('active');});
+        document.querySelector('input[name="osmMatch"][value="any"]').checked=true;
+        showMarkers(plotData);
+    }
+    // ── Land panel ─────────────────────────────────────────────────────────────
+    var LAND_CAT_COLORS = {
+        water:              { bg: 'rgba(59,158,221,0.15)',  color: '#3b9edd' },
+        winter:             { bg: 'rgba(168,216,240,0.15)', color: '#a8d8f0' },
+        outdoor_recreation: { bg: 'rgba(16,185,129,0.15)',  color: '#10b981' },
+        protected_land:     { bg: 'rgba(107,203,119,0.15)', color: '#6bcb77' },
+        natural_features:   { bg: 'rgba(184,169,240,0.15)', color: '#b8a9f0' },
+        tourism_leisure:    { bg: 'rgba(255,165,2,0.15)',   color: '#ffa502' },
+        infrastructure:     { bg: 'rgba(139,143,163,0.15)', color: '#8b8fa3' }
+    };
+    var LAND_CAT_LABELS = {
+        water: '💧 Water', winter: '⛷ Winter', outdoor_recreation: '🥾 Outdoor Recreation',
+        protected_land: '🌲 Protected Land', natural_features: '⛰ Natural Features',
+        tourism_leisure: '🎡 Tourism & Leisure', infrastructure: '✈ Infrastructure'
+    };
+
+    function openLandPanelFromBtn(btn) {
+        var name = btn.getAttribute('data-name');
+        var city = btn.getAttribute('data-city');
+        var state = btn.getAttribute('data-state');
+        var _osmKey = (name||'')+'||'+(city||'')+'||'+(state||'');
+        if (typeof OSM_LAND_DATA === 'undefined' || !OSM_LAND_DATA[_osmKey]) return;
+        openLandPanel(name, city, state, OSM_LAND_DATA[_osmKey]);
+    }
+
+    function envScoreColor(score) {
+        if (score === null || score === undefined) return '#3d4f6e';
+        if (score >= 85) return '#00b894';
+        if (score >= 70) return '#10b981';
+        if (score >= 55) return '#ffa502';
+        if (score >= 35) return '#ff6b35';
+        return '#8b8fa3';
+    }
+    function envScoreLabel(score) {
+        if (score === null || score === undefined) return 'Not Scraped';
+        if (score >= 85) return 'Exceptional';
+        if (score >= 70) return 'Strong';
+        if (score >= 55) return 'Moderate';
+        if (score >= 35) return 'Limited';
+        return 'Minimal';
+    }
+    // ── Partnership Readiness Score (v2 — 4 axes) ────────────────────────────
+    var _BEA = {'Hawaii':6.1,'Alaska':5.3,'Montana':4.9,'Vermont':4.5,'Wyoming':4.3,'Maine':4.1,'Idaho':3.9,'New Mexico':3.7,'Oregon':3.5,'Colorado':3.4,'South Dakota':3.3,'North Dakota':3.2,'Utah':3.1,'West Virginia':3.0,'Arkansas':2.9,'New Hampshire':2.8,'Mississippi':2.8,'Kentucky':2.7,'Tennessee':2.7,'South Carolina':2.6,'Alabama':2.6,'Nevada':2.6,'Wisconsin':2.5,'Minnesota':2.5,'Washington':2.5,'Nebraska':2.5,'Kansas':2.4,'Iowa':2.4,'Missouri':2.4,'Indiana':2.4,'North Carolina':2.3,'Arizona':2.3,'Oklahoma':2.3,'Louisiana':2.3,'Georgia':2.2,'Virginia':2.2,'Michigan':2.2,'Ohio':2.1,'Pennsylvania':2.1,'Texas':2.1,'California':2.0,'Florida':2.0,'Illinois':1.9,'Maryland':1.9,'Massachusetts':1.8,'New Jersey':1.7,'Connecticut':1.6,'New York':1.6,'Delaware':1.6,'Rhode Island':1.5,'District of Columbia':1.0};
+    var _CLIFF = {'Hawaii':-33,'California':-29,'New York':-27,'West Virginia':-26,'Wyoming':-23,'New Mexico':-21,'Oregon':-19,'Pennsylvania':-17,'Mississippi':-16,'Rhode Island':-15,'Vermont':-15,'Alaska':-14,'Maine':-10,'New Hampshire':-10,'Colorado':-12,'Michigan':-11,'Ohio':-11,'Illinois':-10,'Connecticut':-9,'Massachusetts':-9,'Maryland':-8,'Missouri':-8,'Wisconsin':-8,'Indiana':-7,'Minnesota':-7,'Kansas':-7,'Nebraska':-6,'Iowa':-6,'Washington':-5,'Virginia':-5,'Nevada':-4,'Delaware':-4,'New Jersey':-1,'Arizona':2,'Florida':3,'Georgia':4,'North Carolina':5,'Tennessee':6,'South Carolina':7,'Texas':8,'Kentucky':-3,'Alabama':-2,'Louisiana':-3,'Arkansas':-2,'Oklahoma':1,'Utah':3,'Idaho':6,'Montana':4,'North Dakota':5,'South Dakota':4,'District of Columbia':-5};
+    var _CLOSURES = {'Pennsylvania':12,'New York':10,'California':8,'Massachusetts':7,'Illinois':6,'Ohio':6,'Michigan':5,'Virginia':5,'Iowa':5,'Indiana':4,'Wisconsin':4,'Minnesota':4,'Missouri':4,'Connecticut':4,'New Jersey':3,'Texas':3,'Florida':3,'Georgia':3,'North Carolina':3,'Vermont':3,'Maine':2,'Oregon':2,'Washington':2,'Kansas':2,'Nebraska':2,'Montana':2,'Tennessee':2,'Alabama':2,'Kentucky':2,'Oklahoma':2,'Colorado':1,'Arizona':1,'New Hampshire':1,'Rhode Island':1,'West Virginia':1,'Maryland':1,'South Carolina':1,'Mississippi':1,'Arkansas':1,'Louisiana':1,'Nevada':1,'Idaho':1,'New Mexico':1,'Hawaii':1};
+    var _SFUND = {'Washington':3,'Colorado':3,'Oregon':3,'California':3,'Minnesota':3,'Maryland':3,'Massachusetts':3,'Connecticut':3,'New York':3,'Utah':3,'Idaho':3,'Montana':3,'North Dakota':3,'South Dakota':3,'Texas':2,'Florida':2,'Georgia':2,'North Carolina':2,'Virginia':2,'Tennessee':2,'Indiana':2,'Ohio':2,'Wisconsin':2,'Michigan':2,'Iowa':2,'Nebraska':2,'Kansas':2,'Missouri':2,'Oklahoma':2,'Arkansas':2,'South Carolina':2,'New Jersey':2,'Delaware':2,'Nevada':2,'Arizona':2,'Hawaii':2,'Alaska':2,'New Mexico':2,'Wyoming':2,'Illinois':1,'Pennsylvania':1,'New Hampshire':1,'Vermont':1,'Maine':1,'Rhode Island':1,'Kentucky':1,'West Virginia':1,'Mississippi':1,'Louisiana':1,'Alabama':1,'District of Columbia':1};
+    var _RE_TIER = {'Florida':3,'Texas':3,'North Carolina':3,'South Carolina':3,'Tennessee':3,'Georgia':3,'Arizona':3,'Nevada':3,'Montana':3,'Idaho':3,'Utah':3,'Colorado':3,'Delaware':3,'Vermont':3,'Maine':3,'New Hampshire':3,'New Jersey':3,'Connecticut':3,'Virginia':2,'Washington':2,'Oregon':2,'California':2,'Massachusetts':2,'Maryland':2,'New York':2,'Pennsylvania':2,'Ohio':2,'Indiana':2,'Michigan':2,'Wisconsin':2,'Minnesota':2,'Missouri':2,'Kansas':2,'Nebraska':2,'Iowa':2,'Kentucky':2,'Alabama':2,'Arkansas':2,'Oklahoma':2,'New Mexico':2,'Wyoming':2,'South Dakota':2,'North Dakota':2,'Alaska':2,'Hawaii':2,'Rhode Island':2,'Illinois':1,'Louisiana':1,'Mississippi':1,'West Virginia':1,'District of Columbia':1};
+
+    function computePRScore(rec) {
+        if (!rec) return null;
+        var state = rec.state || '';
+        var urb   = (rec.urbanization || '').split(':')[0].trim();
+        var ds    = parseFloat(rec.distress_score) || 0;
+        var cr    = (parseFloat(rec.closure_risk_score) || 0) * 100;
+        var dcat  = rec.distress_category || '';
+        var acres = parseFloat(rec.acreage_primary) || parseFloat(rec.scraper_acres) || parseFloat(rec.osm_acres) || 0;
+        // Regional accreditor by state (since accreditor field is empty)
+        var _ACC = {'Arizona':3,'Arkansas':3,'Colorado':3,'Illinois':3,'Indiana':3,'Iowa':3,'Kansas':3,'Michigan':3,'Minnesota':3,'Missouri':3,'Nebraska':3,'New Mexico':3,'North Dakota':3,'Ohio':3,'Oklahoma':3,'South Dakota':3,'West Virginia':3,'Wisconsin':3,'Wyoming':3,'Alabama':3,'Florida':3,'Georgia':3,'Kentucky':3,'Louisiana':3,'Mississippi':3,'North Carolina':3,'South Carolina':3,'Tennessee':3,'Texas':3,'Virginia':3,'Delaware':2,'District of Columbia':2,'Maryland':2,'New Jersey':2,'New York':2,'Pennsylvania':2,'Connecticut':2,'Maine':2,'Massachusetts':2,'New Hampshire':2,'Rhode Island':2,'Vermont':2,'Alaska':2,'Idaho':2,'Montana':2,'Nevada':2,'Oregon':2,'Utah':2,'Washington':2,'California':2,'Hawaii':2};
+        // Axis 1: State Policy (32 pts) — outdoor=15, cliff=10, closures=7
+        var bea   = _BEA[state] || 2.4;
+        var cliff = _CLIFF[state] !== undefined ? _CLIFF[state] : -13;
+        var ncls  = _CLOSURES[state] || 0;
+        var s1a   = bea>=4.5?15:bea>=4.0?13:bea>=3.5?11:bea>=3.0?9:bea>=2.5?7:bea>=2.0?4:bea>=1.7?2:0;
+        var s1b   = cliff<=-25?10:cliff<=-20?9:cliff<=-15?7:cliff<=-10?5:cliff<=-5?3:cliff<=0?1:0;
+        var s1c   = ncls>=10?7:ncls>=7?6:ncls>=5?5:ncls>=3?3:ncls>=2?2:ncls>=1?1:0;
+        // Axis 2: Funding (24 pts) — rural=8, funding=8, accreditor=8
+        var ft    = _SFUND[state] || 2;
+        var s2a   = urb==='Rural'?8:urb==='Town'?6:urb==='Suburb'?2:urb==='City'?0:4;
+        var s2b   = ft===3?8:ft===2?5:1;
+        var accTier = _ACC[state] || 2;
+        var s2c   = accTier===3?8:4;
+        // Axis 3: Governance & Urgency (32 pts) — trajectory=14, community=10, flags=8
+        var comb  = ds*0.6 + cr*0.4;
+        var s3a   = Math.min(14, Math.round(comb / 5));
+        var urbPts= urb==='Rural'?10:urb==='Town'?7:urb==='Suburb'?4:urb==='City'?1:5;
+        var dBonus= dcat==='Critical'||dcat==='High'?2:dcat==='Moderate'?1:0;
+        var s3b   = Math.min(10, urbPts + dBonus);
+        var s3c   = 0;
+        if (rec.flag_negative_net_worth==='1'||rec.flag_990_negative_net_assets==='1') s3c+=3;
+        if (rec.flag_enrollment_decline==='1') s3c+=2;
+        if (rec.flag_operating_losses==='1'||rec.flag_990_operating_loss==='1') s3c+=2;
+        if ((parseFloat(rec.closure_risk_score)||0)>0.3) s3c+=2;
+        if (rec.flag_low_retention==='1') s3c+=1;
+        s3c = Math.min(8, s3c);
+        // Axis 4: Asset Value (22 pts) — RE market=8, acreage=9, land type=5
+        var reTier = _RE_TIER[state] || 2;
+        var s4a    = reTier===3?8:reTier===2?4:1;
+        var s4b;
+        if (urb==='City'||urb==='Suburb') {
+            s4b = acres>=100?9:acres>=50?7:acres>=20?5:acres>=5?3:acres>0?1:0;
+        } else {
+            s4b = acres>=500?9:acres>=200?7:acres>=100?5:acres>=50?3:acres>=20?1:0;
+        }
+        var s4c;
+        if (acres <= 0) { s4c = 0; }
+        else {
+            s4c = {'City':5,'Suburb':4,'Town':3,'Rural':3}[urb] || 3;
+            if ((urb==='Rural'||urb==='Town') && acres>=200) s4c = Math.min(5, s4c+2);
+            else if ((urb==='Rural'||urb==='Town') && acres>=50) s4c = Math.min(5, s4c+1);
+            else if ((urb==='City'||urb==='Suburb') && acres>=10) s4c = Math.min(5, s4c+1);
+        }
+        var total = Math.min(100, Math.max(0, s1a+s1b+s1c+s2a+s2b+s2c+s3a+s3b+s3c+s4a+s4b+s4c));
+        return {
+            total: Math.round(total),
+            axis1: s1a+s1b+s1c, axis2: s2a+s2b+s2c, axis3: s3a+s3b+s3c, axis4: s4a+s4b+s4c,
+            bea: bea, cliff: cliff, ncls: ncls, reTier: reTier, acres: acres,
+            label: total>=75?'Excellent':total>=60?'Strong':total>=45?'Moderate':total>=30?'Limited':'Low'
+        };
+    }
+
+    function buildPRBadge(pr) {
+        if (!pr) return '';
+        var color = pr.total>=75?'#00b894':pr.total>=60?'#10b981':pr.total>=45?'#ffa502':pr.total>=30?'#ff6b35':'#ff4757';
+        var bgColor = color + '15';
+        var reLbl = pr.reTier===3?'Strong':pr.reTier===2?'Moderate':'Flat';
+        return '<div style="margin-top:10px;padding:10px 12px;background:' + bgColor + ';border-radius:8px;border:1px solid ' + color + '44">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            + '<div style="width:36px;height:36px;border-radius:50%;border:2.5px solid ' + color + ';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:' + color + '">' + pr.total + '</div>'
+            + '<div><div style="font-size:12px;font-weight:600;color:' + color + '">' + pr.label + ' Partnership Fit</div>'
+            + '<div style="font-size:10px;color:var(--text2)">BEA outdoor ' + pr.bea + '% · WICHE ' + pr.cliff + '% · ' + pr.ncls + ' closures · RE ' + reLbl + '</div></div></div>'
+            + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">'
+            + '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:5px;text-align:center"><div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)">' + pr.axis1 + '/32</div><div style="font-size:9px;color:var(--text2);margin-top:1px">State Policy</div></div>'
+            + '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:5px;text-align:center"><div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)">' + pr.axis2 + '/24</div><div style="font-size:9px;color:var(--text2);margin-top:1px">Funding</div></div>'
+            + '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:5px;text-align:center"><div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)">' + pr.axis3 + '/32</div><div style="font-size:9px;color:var(--text2);margin-top:1px">Urgency</div></div>'
+            + '<div style="background:rgba(255,255,255,.04);border-radius:4px;padding:5px;text-align:center"><div style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)">' + pr.axis4 + '/22</div><div style="font-size:9px;color:var(--text2);margin-top:1px">Asset Value</div></div>'
+            + '</div></div>';
+    }
+
+    function buildEnvScoreBadge(envScore) {
+        if (!envScore || envScore.score === null || envScore.score === undefined) {
+            return '<div class="env-score-badge"><div style="font-size:11px;color:var(--text2)">Environment score not yet available — OSM scrape pending.</div></div>';
+        }
+        var score = envScore.score;
+        var color = envScoreColor(score);
+        var label = envScoreLabel(score);
+        var r = 20; var circ = 2 * Math.PI * r;
+        var filled = (score / 100) * circ;
+        var topFeats = (envScore.top_features || []).slice(0, 5);
+        var gaugeHtml = '<div class="env-score-gauge">'
+            + '<svg viewBox="0 0 48 48"><circle class="gauge-bg" cx="24" cy="24" r="'+r+'"/>'
+            + '<circle class="gauge-fill" cx="24" cy="24" r="'+r+'" stroke="'+color+'" '
+            + 'stroke-dasharray="'+circ.toFixed(1)+'" stroke-dashoffset="'+(circ-filled).toFixed(1)+'"/>'
+            + '</svg><div class="env-score-num" style="color:'+color+'">'+score.toFixed(0)+'</div></div>';
+        var featsHtml = topFeats.length > 0
+            ? '<div class="env-score-breakdown">'
+              + topFeats.map(function(f){ return '<span class="env-score-feat">'+f+'</span>'; }).join('')
+              + '</div>'
+            : '';
+        var compsHtml = '<div class="env-score-components">'
+            + '<div class="env-comp"><div class="env-comp-label">Feature Quality</div>'
+            + '<div class="env-comp-val" style="color:'+envScoreColor(envScore.feature_score)+'">'+envScore.feature_score+'</div></div>'
+            + '<div class="env-comp"><div class="env-comp-label">Category Mix</div>'
+            + '<div class="env-comp-val" style="color:'+envScoreColor(envScore.category_score)+'">'+envScore.category_score+'</div></div>'
+            + '<div class="env-comp"><div class="env-comp-label">Feature Density</div>'
+            + '<div class="env-comp-val" style="color:'+envScoreColor(envScore.density_bonus)+'">'+envScore.density_bonus+'</div></div>'
+            + '<div class="env-comp"><div class="env-comp-label">Proximity</div>'
+            + '<div class="env-comp-val" style="color:'+envScoreColor(envScore.radius_bonus)+'">'+envScore.radius_bonus+'</div></div>'
+            + '</div>';
+        return '<div class="env-score-badge">' + gaugeHtml
+            + '<div class="env-score-info">'
+            + '<div class="env-score-label" style="color:'+color+'">'+label+' Environment</div>'
+            + '<div class="env-score-sub">HV Environment Score — named natural features and outdoor access'
+            + (envScore.context_mult && envScore.context_mult < 1.0 ? ' <span style="color:#ffa502">×' + envScore.context_mult + ' urban context</span>' : '')
+            + '.</div>'
+            + featsHtml + compsHtml + '</div></div>';
+    }
+
+    function openLandPanel(name, city, state, data) {
+        var np = document.getElementById('news-panel');
+        if (np) np.classList.remove('open');
+        document.getElementById('land-panel-title').textContent = name;
+        document.getElementById('land-panel-sub').textContent = [city, state].filter(Boolean).join(', ');
+        // Environment score badge
+        var envScore = (data && data.env_score) ? data.env_score : null;
+        var badgeEl = document.getElementById('land-env-score-badge');
+        if (!badgeEl) {
+            badgeEl = document.createElement('div');
+            badgeEl.id = 'land-env-score-badge';
+            document.querySelector('.land-panel-head').appendChild(badgeEl);
+        }
+        badgeEl.innerHTML = buildEnvScoreBadge(envScore);
+        // Partnership Readiness badge
+        var rec = (typeof allData !== 'undefined') ? allData.find(function(r){ return r.institution_name === name && (r.city||'') === (city||'') && (r.state||'') === (state||''); }) || allData.find(function(r){ return r.institution_name === name; }) : null;
+        var prScore = computePRScore(rec);
+        var prBadgeEl = document.getElementById('land-pr-badge');
+        if (!prBadgeEl) {
+            prBadgeEl = document.createElement('div');
+            prBadgeEl.id = 'land-pr-badge';
+            document.querySelector('.land-panel-head').appendChild(prBadgeEl);
+        }
+        prBadgeEl.innerHTML = buildPRBadge(prScore);
+        // Summary strip
+        var cats = (data && data.categories) ? data.categories : [];
+        var count = (data && data.count) ? data.count : 0;
+        var radius = (data && data.radius_miles) ? data.radius_miles : 20;
+        document.getElementById('land-summary-strip').innerHTML =
+            '<div class="land-sum-chip"><div class="land-sum-val">'+cats.length+'</div><div class="land-sum-label">Categories</div></div>'
+           +'<div class="land-sum-chip"><div class="land-sum-val">'+count+'</div><div class="land-sum-label">Features</div></div>'
+           +'<div class="land-sum-chip"><div class="land-sum-val">'+radius+'mi</div><div class="land-sum-label">Radius</div></div>';
+        // Feature sections
+        var html = '';
+        var bycat = (data && data.by_category) ? data.by_category : {};
+        var catOrder = ['water','winter','outdoor_recreation','protected_land','natural_features','tourism_leisure','infrastructure'];
+        catOrder.forEach(function(cat) {
+            if (!bycat[cat] || !bycat[cat].length) return;
+            var style = LAND_CAT_COLORS[cat] || { bg: 'rgba(255,255,255,0.05)', color: '#aaa' };
+            var label = LAND_CAT_LABELS[cat] || cat;
+            html += '<div class="land-cat-section">'
+                + '<div class="land-cat-header" style="background:'+style.bg+';color:'+style.color+'">'+label+'</div>';
+            bycat[cat].forEach(function(feat) {
+                var text = (typeof feat === 'object') ? (feat.display || feat.label || JSON.stringify(feat)) : feat;
+                html += '<div class="land-feature-item" style="border-left-color:'+style.color+'">'+text+'</div>';
+            });
+            html += '</div>';
+        });
+        document.getElementById('land-body').innerHTML = html || '<div class="land-empty">No feature detail available.</div>';
+        var ts = (data && data.queried_at) ? data.queried_at : '';
+        document.getElementById('land-timestamp').textContent = ts ? 'Scraped: ' + ts : '';
+        document.getElementById('land-panel').classList.add('open');
+    }
+
+    function closeLandPanel() {
+        document.getElementById('land-panel').classList.remove('open');
+    }
+
+    function toggleSidebar(){
+        var sb=document.getElementById('sidebar');
+        sb.classList.toggle('collapsed');
+        document.getElementById('sidebar-toggle').textContent=sb.classList.contains('collapsed')?'▶':'◀';
+        setTimeout(function(){map.invalidateSize();},350);
+    }
+
+
+    // =========================================================================
+    // NEWS PANEL - Google News RSS + ProPublica Nonprofit Explorer
+    // No API keys required. Works from file:// or http:// context.
+    // =========================================================================
+
+    var _newsCurrentUid    = null;
+    var _newsCurrentName   = null;
+    var _newsCurrentCity   = null;
+    var _newsCurrentState  = null;
+    var _newsCurrentSource = null;
+    var _newsCurrentEin    = null;
+    var _newsActiveTab     = 'news';
+
+    var NEWS_SIGNALS = {
+        closure: {
+            label: 'Closure / M&A', color: '#ff4757', weight: -60,
+            // Use specific multi-word phrases or unambiguous stems only.
+            // Avoid bare 'clos' — catches 'closet','closer','close roads' etc.
+            keywords: ['closure','closed permanently','closing permanently','closed its doors',
+                       'college closing','university closing','campus closing','school closing',
+                       'college closed','university closed','campus closed',
+                       'is closing down','shut down','shutdown',
+                       'teach-out','teach out','ceasing operations','wind down','wind-down',
+                       'discontinuing operations','merger','merging with','merged with',
+                       'acquisition','acquired by','consolidat',
+                       'sale of campus','sell campus','ceases operation',
+                       'no longer enrolling','suspending operations',
+                       'dissolution','dissolving','dissolved']
+        },
+        accreditation: {
+            label: 'Accreditation', color: '#ff6b35', weight: -35,
+            keywords: ['accreditation','hlc','sacscoc','neche','wscuc','nwccu','neasc','sacs',
+                       'probation','sanctions','show cause','warning notice',
+                       'loss of accreditation','accreditor','reaffirmation denied',
+                       'withdraw accreditation']
+        },
+        financial: {
+            label: 'Financial Distress', color: '#ffa502', weight: -25,
+            keywords: ['budget deficit','budget cut','budget gap','layoff','lay off','restructur',
+                       'financial difficult','bankruptcy','default','furlough',
+                       'program cut','program eliminat','program suspension',
+                       'financial crisis','insolvenc','revenue shortfall','financial strain',
+                       'cost-cutting','cost cutting','endowment loss','bond downgrade',
+                       'credit downgrade','emergency budget','fiscal crisis',
+                       'operating loss','financial trouble','financial challenge']
+        },
+        enrollment: {
+            label: 'Enrollment / Demand', color: '#a29bfe', weight: -20,
+            keywords: ['enrollment declin','enrollment drop','enrollment fell','enrollment fall',
+                       'declining enrollment','fewer students','student shortage',
+                       'falling enrollment','enrollment loss','enrollment down',
+                       'admissions declin','yield drop','demographic cliff',
+                       'low enrollment','under-enrolled','headcount declin']
+        },
+        positive: {
+            label: 'Positive Signal', color: '#10b981', weight: 25,
+            keywords: ['record enrollment','enrollment growth','enrollment increase','enrollment up',
+                       'enrollment rose','new program','expansion','new campus','investment',
+                       'grant award','accreditation reaffirm','financial strength','surplus',
+                       'endowment growth','endowment increase','partnership','strategic plan',
+                       'milestone','excellence','bond upgrade','credit upgrade',
+                       'record applicant','applications up','strong demand',
+                       'new building','capital campaign','fundraising goal']
+        }
+    };
+
+    function recencyWeight(dateStr) {
+        if (!dateStr) return 0.1;
+        var age = (Date.now() - new Date(dateStr).getTime()) / 86400000;
+        if (age <=  30) return 1.0;
+        if (age <=  90) return 0.6;
+        if (age <= 180) return 0.3;
+        if (age <= 365) return 0.15;
+        return 0.05;
+    }
+
+    function classifyArticle(title, snippet) {
+        var text = ((title||'') + ' ' + (snippet||'')).toLowerCase();
+        var order = ['closure','accreditation','financial','enrollment','positive'];
+        for (var i = 0; i < order.length; i++) {
+            var kws = NEWS_SIGNALS[order[i]].keywords;
+            for (var j = 0; j < kws.length; j++) {
+                if (text.indexOf(kws[j]) >= 0) return order[i];
+            }
+        }
+        return 'general';
+    }
+
+    function computeTemperature(articles) {
+        if (!articles || !articles.length) return null;
+        var raw = 0, tw = 0;
+        articles.forEach(function(a) {
+            var sig = NEWS_SIGNALS[a.signal];
+            if (!sig) return;
+            var rw = recencyWeight(a.date);
+            raw += sig.weight * rw;
+            tw  += rw;
+        });
+        if (!tw) return null;
+        return Math.max(-100, Math.min(100, Math.round(raw)));
+    }
+
+    function temperatureBucket(score) {
+        if (score === null) return { label: 'Insufficient signal', cls: 'neutral' };
+        if (score <= -20)   return { label: 'Negative signals detected', cls: 'negative' };
+        if (score >=  20)   return { label: 'Positive signals detected', cls: 'positive' };
+        return { label: 'Mixed / no strong signal', cls: 'neutral' };
+    }
+
+    function renderTemperatureBar(score, n) {
+        if (score === null) return '';
+        var b   = temperatureBucket(score);
+        var pct = Math.abs(score) / 2;
+        var col = score < 0 ? 'var(--critical)' : score > 0 ? 'var(--low)' : 'var(--text2)';
+        var fillStyle = score < 0
+            ? 'right:50%;width:' + pct + '%;background:' + col
+            : 'left:50%;width:'  + pct + '%;background:' + col;
+        return '<div class="temp-bar-wrap">'
+            + '<div class="temp-bar-label">'
+            + '<span class="temp-bar-title">Signal Temperature</span>'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+            + '<span class="temp-score ' + b.cls + '">' + (score > 0 ? '+' : '') + score + '</span>'
+            + '<span class="temp-bucket ' + b.cls + '">' + b.label + '</span>'
+            + '</div></div>'
+            + '<div class="temp-track">'
+            + '<div class="temp-center"></div>'
+            + '<div class="temp-fill" style="' + fillStyle + '"></div>'
+            + '</div>'
+            + '<div class="temp-meta">' + n + ' article' + (n !== 1 ? 's' : '') + ' scored \u00b7 recency-weighted</div>'
+            + '</div>';
+    }
+
+    function buildNewsQuery(name, city, state, dataSource) {
+        if (dataSource === 'Hummingbird_990') {
+            // Strip legal suffixes that pollute 990 org searches
+            var q = name.replace(/\b(INC|LLC|CORP|CORPORATION|FOUNDATION|ASSOCIATION|TRUST|NFP|NPC|LTD|CO|INCORPORATED|LIMITED)\b\.?/gi, '').trim();
+            q = q.replace(/\s{2,}/g, ' ').trim();
+            // Put cleaned name in quotes, then add location OUTSIDE quotes for context
+            var loc = [city, state].filter(Boolean).join(' ');
+            return '"' + q + '"' + (loc ? ' ' + loc : '');
+        } else {
+            // IPEDS: exact name in quotes only — adding state INSIDE quotes kills results
+            // (Google treats the whole thing as a literal phrase)
+            return '"' + name + '"';
+        }
+    }
+
+    function getCache(key)       { try { var r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch(e){return null;} }
+    function setCache(key, data) { try { localStorage.setItem(key, JSON.stringify({ts:Date.now(),data:data})); } catch(e){} }
+    function newsCacheKey(uid)   { return 'hb_news_v3_' + uid; }
+    function ppCacheKey(ein)     { return 'hb_pp_v1_' + ein; }
+    function formatCacheAge(ts)  {
+        var m=Math.floor((Date.now()-ts)/60000);
+        if(m<2) return 'just now';
+        if(m<60) return m+'m ago';
+        var h=Math.floor(m/60);
+        if(h<24) return h+'h ago';
+        return Math.floor(h/24)+'d ago';
+    }
+
+        function loadEnvTab(){
+        var el=document.getElementById('env-content');if(!el)return;
+        var r=window._currentNewsInstitution;
+        if(!r){el.innerHTML='<div style="color:var(--text2)">Open an institution to load environment data.</div>';return;}
+        var osm=typeof OSM_LAND_DATA!=='undefined'?(OSM_LAND_DATA[(r.institution_name||'')+'||'+(r.city||'')+'||'+(r.state||'')]||null):null;
+        var score=parseFloat((osm&&osm.env_score)||'');
+        var html='';
+        if(!isNaN(score)){
+            var col=score>=70?'#00b894':score>=50?'#ffa502':score>=30?'#ff6b35':'#8b8fa3';
+            var lbl=score>=85?'Exceptional':score>=70?'Strong':score>=55?'Moderate':score>=35?'Limited':'Minimal';
+            html+='<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:12px">'
+                +'<div style="font-size:26px;font-weight:700;color:'+col+';font-family:var(--mono)">'+score.toFixed(0)+'</div>'
+                +'<div><div style="font-size:12px;font-weight:600;color:'+col+'">'+lbl+'</div>'
+                +'<div style="font-size:10px;color:var(--text2)">OSM Environment Score</div></div></div>';
+        } else {
+            html+='<div style="color:var(--text2);margin-bottom:10px">Not yet scraped for this institution.</div>';
+        }
+        if(osm&&osm.by_category){
+            var icons={winter:'⛷',water:'💧',outdoor_recreation:'🥾',protected_land:'🌳',natural_features:'⛰',tourism_leisure:'🏛'};
+            var labels={winter:'Winter Sports',water:'Water Features',outdoor_recreation:'Outdoor Rec',protected_land:'Protected Land',natural_features:'Natural Features',tourism_leisure:'Tourism'};
+            Object.keys(osm.by_category).forEach(function(cat){
+                var feats=osm.by_category[cat];if(!feats||!feats.length)return;
+                html+='<div style="margin-bottom:8px"><div style="font-size:9px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">'+(icons[cat]||'')+' '+(labels[cat]||cat)+'</div>';
+                feats.forEach(function(f){html+='<div style="font-size:10px;padding:2px 0;border-bottom:1px solid rgba(42,45,55,.4)"><span style="color:var(--text2)">'+(f.label||'')+'</span>'+(f.display?' &middot; '+f.display:'')+'</div>';});
+                html+='</div>';
+            });
+        }
+        el.innerHTML=html||'<div style="color:var(--text2)">No environment data available.</div>';
+    }
+    function switchNewsTab(tab) {
+        _newsActiveTab = tab;
+        ['news','pp','env'].forEach(function(t){var el=document.getElementById('tab-'+t);if(el)el.classList.toggle('active',t===tab);});
+        var nb=document.getElementById('news-body'),pb=document.getElementById('pp-body'),eb=document.getElementById('env-body');
+        if(nb)nb.style.display=tab==='news'?'':'none';
+        if(pb)pb.style.display=tab==='pp'?'':'none';
+        if(eb)eb.style.display=tab==='env'?'':'none';
+        document.getElementById('news-fetch-bar').style.display=tab==='news'?'':'none';
+        if(tab==='pp')loadProPublica(_newsCurrentEin);
+        if(tab==='env')loadEnvTab();
+    }
+
+    function openNewsPanelFromBtn(btn) {
+        if(typeof allData!=='undefined'&&allData){var _r=allData.find(function(x){return x.institution_name===btn.getAttribute('data-name');});if(_r)window._currentNewsInstitution=_r;}
+        openNewsPanel(
+            btn.getAttribute('data-uid'),
+            btn.getAttribute('data-name'),
+            btn.getAttribute('data-city'),
+            btn.getAttribute('data-state'),
+            btn.getAttribute('data-source'),
+            btn.getAttribute('data-ein')
+        );
+    }
+
+    function openNewsPanel(uid, name, city, state, dataSource, ein) {
+        _newsCurrentUid    = uid;
+        _newsCurrentName   = name  || uid;
+        _newsCurrentCity   = city  || '';
+        _newsCurrentState  = state || '';
+        _newsCurrentSource = dataSource || '';
+        _newsCurrentEin    = ein   || '';
+        _newsActiveTab     = 'news';
+
+        document.getElementById('news-panel-title').textContent = _newsCurrentName;
+        document.getElementById('news-panel-sub').textContent   = [city,state].filter(Boolean).join(', ');
+        document.getElementById('tab-news').classList.add('active');
+        document.getElementById('tab-pp').classList.remove('active');
+        document.getElementById('news-body').style.display      = '';
+        document.getElementById('pp-body').style.display        = 'none';
+        document.getElementById('news-fetch-bar').style.display = '';
+        document.getElementById('news-fetch-btn').disabled      = false;
+
+        var cached = getCache(newsCacheKey(uid));
+        if (cached) {
+            document.getElementById('news-fetch-meta').innerHTML =
+                'Cached ' + formatCacheAge(cached.ts) + ' \u00b7 ' +
+                '<a onclick="forceRefreshNews()" style="cursor:pointer;color:var(--accent2)">\u21bb Refresh</a>';
+            renderNewsArticles(cached.data);
+        } else {
+            document.getElementById('news-fetch-meta').innerHTML = '';
+            document.getElementById('news-body').innerHTML =
+                '<div class="news-empty"><div class="news-empty-icon">&#128240;</div>' +
+                '<strong>' + _newsCurrentName + '</strong><br><br>' +
+                'Click <strong>Fetch News</strong> to pull the latest headlines from Google News.' +
+                '</div>';
+        }
+        document.getElementById('news-panel').classList.add('open');
+    }
+
+    function closeNewsPanel()   { document.getElementById('news-panel').classList.remove('open'); }
+    function forceRefreshNews() { fetchNews(true); }
+
+    function fetchNews(force) {
+        if (!_newsCurrentUid || !_newsCurrentName) return;
+
+        // ── Check pre-scraped persistent cache first ──────────────────────
+        if (!force && typeof NEWS_CACHE !== 'undefined' && NEWS_CACHE) {
+            var _uid   = _newsCurrentUid   || '';
+            var _name  = _newsCurrentName  || '';
+            var _city  = _newsCurrentCity  || '';
+            var _state = _newsCurrentState || '';
+            var _cKey  = _uid + '||' + _name + '||' + _city + '||' + _state;
+            var _entry = NEWS_CACHE[_cKey];
+            if (_entry && _entry.articles && _entry.articles.length > 0) {
+                renderNewsArticles(_entry.articles);
+                document.getElementById('news-fetch-meta').innerHTML =
+                    'Pre-scraped ' + (_entry.scraped_at || '') +
+                    ' · ' + _entry.articles.length + ' results' +
+                    ' · <a onclick="forceRefreshNews()" style="cursor:pointer;color:var(--accent2)">↻ Live refresh</a>';
+                return;
+            }
+        }
+
+        // ── Fall back to session cache ────────────────────────────────────
+        if (!force) {
+            var cached = getCache(newsCacheKey(_newsCurrentUid));
+            if (cached) { renderNewsArticles(cached.data); return; }
+        }
+        document.getElementById('news-body').innerHTML =
+            '<div class="news-loading"><div class="news-spinner"></div>Fetching from Google News\u2026</div>';
+        document.getElementById('news-fetch-btn').disabled = true;
+        document.getElementById('news-fetch-meta').innerHTML = 'Fetching\u2026';
+
+        var q   = encodeURIComponent(buildNewsQuery(_newsCurrentName,_newsCurrentCity,_newsCurrentState,_newsCurrentSource));
+        var rss = 'https://news.google.com/rss/search?q=' + q + '&hl=en-US&gl=US&ceid=US:en';
+        var url = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rss);
+
+        fetch(url)
+            .then(function(r){ if(!r.ok) throw new Error('Proxy '+r.status); return r.text(); })
+            .then(function(text){
+                if (!text) throw new Error('Empty response');
+                var articles = parseRSSFeed(text);
+                setCache(newsCacheKey(_newsCurrentUid), articles);
+                document.getElementById('news-fetch-btn').disabled = false;
+                document.getElementById('news-fetch-meta').innerHTML =
+                    'Fetched just now \u00b7 ' + articles.length + ' results \u00b7 ' +
+                    '<a onclick="forceRefreshNews()" style="cursor:pointer;color:var(--accent2)">\u21bb Refresh</a>';
+                renderNewsArticles(articles);
+            })
+            .catch(function(err){
+                document.getElementById('news-fetch-btn').disabled = false;
+                document.getElementById('news-fetch-meta').innerHTML = 'Error';
+                document.getElementById('news-body').innerHTML =
+                    '<div class="news-error"><strong>Could not fetch news</strong><br><br>' +
+                    err.message + '<br><br>Check your connection and try again.</div>';
+            });
+    }
+
+    function parseRSSFeed(xml) {
+        var doc = new DOMParser().parseFromString(xml, 'application/xml');
+        var out = [];
+        doc.querySelectorAll('item').forEach(function(item) {
+            var title   = (item.querySelector('title')       ||{}).textContent||'';
+            var link    = (item.querySelector('link')        ||{}).textContent||'';
+            var pubDate = (item.querySelector('pubDate')     ||{}).textContent||'';
+            var snippet = (item.querySelector('description') ||{}).textContent||'';
+            snippet = snippet.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+            var source='', m=title.match(/^(.*?)\s+-\s+([^-]+)$/);
+            if(m){ title=m[1].trim(); source=m[2].trim(); }
+            var dateStr='';
+            if(pubDate){ var d=new Date(pubDate); if(!isNaN(d)) dateStr=d.toISOString().slice(0,10); }
+            if(!title||title==='[Removed]') return;
+
+            // Relevance filter: require at least one higher-ed context word
+            // in title+snippet to eliminate city news, bookstore closings, etc.
+            var HE_CONTEXT = ['college','university','campus','enrollment','enroll',
+                              'students','student','faculty','academic','tuition',
+                              'accreditation','financial aid','endowment','semester',
+                              'commencement','institution','higher education','liberal arts'];
+            var fullText = (title + ' ' + snippet).toLowerCase();
+            var isRelevant = HE_CONTEXT.some(function(w){ return fullText.indexOf(w) >= 0; });
+            if (!isRelevant) return;
+
+            out.push({title:title,source:source,date:dateStr,url:link,snippet:snippet,
+                      signal:classifyArticle(title,snippet)});
+        });
+        return out;
+    }
+
+    function renderNewsArticles(articles) {
+        var body = document.getElementById('news-body');
+        if (!articles || !articles.length) {
+            body.innerHTML = '<div class="news-empty"><div class="news-empty-icon">&#128269;</div>' +
+                'No recent news found for<br><strong>' + _newsCurrentName + '</strong>.</div>';
+            return;
+        }
+        var score = computeTemperature(articles);
+        var html  = renderTemperatureBar(score, articles.length);
+        var groups = {closure:[],accreditation:[],financial:[],enrollment:[],positive:[],general:[]};
+        articles.forEach(function(a){ (groups[a.signal]||(groups.general)).push(a); });
+
+        ['closure','accreditation','financial','enrollment','positive','general'].forEach(function(type){
+            var items = groups[type]; if (!items.length) return;
+            var sig=NEWS_SIGNALS[type], label=sig?sig.label:'General', color=sig?sig.color:'#8b8fa3';
+            html += '<div class="news-signal-group">';
+            html += '<div class="news-signal-label"><span class="news-signal-dot" style="background:'+color+'"></span>'+label+' <span style="color:var(--text2);font-weight:400">('+items.length+')</span></div>';
+            items.forEach(function(a){
+                var rw=recencyWeight(a.date);
+                var age=rw>=1.0?'recent':rw>=0.6?'1-3mo':rw>=0.3?'3-6mo':rw>=0.15?'6-12mo':'>1yr';
+                var cls='news-item'+(type!=='general'&&type!=='positive'?' signal-'+type:'');
+                var sty=type==='positive'?' style="border-left-color:var(--low);background:rgba(16,185,129,0.04)"':'';
+                html+='<div class="'+cls+'"'+sty+'>';
+                html+='<div class="news-headline"><a href="'+a.url+'" target="_blank" rel="noopener">'+a.title+'</a></div>';
+                html+='<div class="news-byline">';
+                if(a.source) html+='<span class="news-source">'+a.source+'</span>';
+                if(a.date)   html+='<span>'+a.date+'</span>';
+                html+='<span style="opacity:0.5">'+age+'</span>';
+                html+='</div>';
+                if(a.snippet) html+='<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.4">'+a.snippet.slice(0,140)+(a.snippet.length>140?'\u2026':'')+'</div>';
+                html+='</div>';
+            });
+            html+='</div>';
+        });
+        body.innerHTML = html;
+    }
+
+    // ProPublica Nonprofit Explorer
+    function loadProPublica(ein) {
+        var body = document.getElementById('pp-body');
+        if (!ein) {
+            body.innerHTML = '<div class="pp-error">No EIN available.<br>ProPublica data requires an EIN.</div>';
+            return;
+        }
+        var cached = getCache(ppCacheKey(ein));
+        if (cached) { renderProPublica(cached.data); return; }
+
+        body.innerHTML = '<div class="pp-loading"><div class="pp-spinner"></div>Loading from ProPublica\u2026</div>';
+
+        // EINs stored as floats (e.g. '10357799.0') — parse via float, then zero-pad to 9 digits
+        var cleanEin = String(parseInt(parseFloat(String(ein)), 10)).padStart(9, '0');
+        var url = 'https://api.allorigins.win/raw?url=' +
+            encodeURIComponent('https://projects.propublica.org/nonprofits/api/v2/organizations/' + cleanEin + '.json');
+
+        fetch(url)
+            .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+            .then(function(json){ setCache(ppCacheKey(ein), json); renderProPublica(json); })
+            .catch(function(err){
+                body.innerHTML = '<div class="pp-error">Could not load ProPublica data.<br><br>' + err.message +
+                    '<br><br><a class="pp-link" href="https://projects.propublica.org/nonprofits/search?q=' +
+                    encodeURIComponent(_newsCurrentName) + '" target="_blank">Search manually &#8599;</a></div>';
+            });
+    }
+
+    function renderProPublica(json) {
+        var org  = json.organization || {};
+        var fils = json.filings_with_data || [];
+        var body = document.getElementById('pp-body');
+        if (!org.name) { body.innerHTML = '<div class="pp-error">No ProPublica record found for this EIN.</div>'; return; }
+
+        var fmt = function(n){ return n ? ('$'+Number(n).toLocaleString()) : '\u2014'; };
+        var tog = 'var c=this.nextElementSibling;c.style.display=c.style.display===\'none\'?\'\':\'none\'';
+        var html = '';
+
+        if (org.mission) {
+            html += '<div class="pp-section"><div class="pp-section-title" onclick="'+tog+'">Mission <span>&#9660;</span></div>';
+            html += '<div><div class="pp-mission">'+org.mission+'</div></div></div>';
+        }
+
+        var fil = fils[0] || {};
+        html += '<div class="pp-section"><div class="pp-section-title" onclick="'+tog+'">Financials <span style="font-size:9px;font-weight:400;color:var(--text2)">'+(fil.tax_prd_yr||'')+'</span> <span>&#9660;</span></div>';
+        html += '<div><div class="pp-kv">';
+        html += '<div class="pp-kv-item"><div class="pp-kv-label">Total Revenue</div><div class="pp-kv-val">'+fmt(fil.totrevenue)+'</div></div>';
+        html += '<div class="pp-kv-item"><div class="pp-kv-label">Total Expenses</div><div class="pp-kv-val">'+fmt(fil.totfuncexpns)+'</div></div>';
+        html += '<div class="pp-kv-item"><div class="pp-kv-label">Net Assets</div><div class="pp-kv-val">'+fmt(fil.net_assets)+'</div></div>';
+        html += '<div class="pp-kv-item"><div class="pp-kv-label">Total Assets</div><div class="pp-kv-val">'+fmt(fil.totassetsend)+'</div></div>';
+        html += '</div></div></div>';
+
+        var execs = fil.employees || org.key_employees || [];
+        if (execs && execs.length) {
+            html += '<div class="pp-section"><div class="pp-section-title" onclick="'+tog+'">Executive Compensation <span>&#9660;</span></div><div>';
+            execs.slice(0,8).forEach(function(e){
+                var comp=e.reportablecompfromorg||e.compensation||0;
+                var name=e.name||e.person_name||''; var title=e.title||e.titleortypeofbusiness||'';
+                if(!name) return;
+                html+='<div class="pp-exec-item"><div><div class="pp-exec-name">'+name+'</div><div class="pp-exec-title">'+title+'</div></div><div class="pp-exec-comp">'+(comp?fmt(comp):'\u2014')+'</div></div>';
+            });
+            html += '</div></div>';
+        }
+
+        if (fils.length > 1) {
+            html += '<div class="pp-section"><div class="pp-section-title" onclick="'+tog+'">Filing History <span>&#9660;</span></div>';
+            html += '<div style="display:none"><div class="pp-kv">';
+            fils.slice(0,6).forEach(function(f){
+                html+='<div class="pp-kv-item"><div class="pp-kv-label">'+(f.tax_prd_yr||'')+'</div><div class="pp-kv-val" style="font-size:10px">'+fmt(f.totrevenue)+'</div></div>';
+            });
+            html += '</div></div></div>';
+        }
+
+        html += '<div style="padding:8px 0 4px;text-align:right"><a class="pp-link" href="https://projects.propublica.org/nonprofits/organizations/'+org.ein+'" target="_blank">Full record on ProPublica &#8599;</a></div>';
+        body.innerHTML = html;
+    }
+
+    </script>
+</body>
+</html>
