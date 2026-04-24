@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <script>
-        (function(){
-        if(sessionStorage.getItem('hv_auth')!=='2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'){
-        window.location.replace('index.html');
-        }
-        })();
+(function(){
+  if(sessionStorage.getItem('hv_auth')!=='2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'){
+    window.location.replace('index.html?redirect=clusters.html');
+  }
+})();
 </script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
