@@ -248,16 +248,17 @@
 //   3. Copy the hex string it returns
 //   4. Paste it into HASH below
 //
-// Current password: hummingbird
+// Current password: hello
 // ═══════════════════════════════════════════════════════════════════
 
 const HASH = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
 
-// The page users land on after auth
-const LANDING = 'map.html';
-
-// Session token key — shared across all protected pages
 const TOKEN_KEY = 'hv_auth';
+
+// Read redirect from URL param, whitelist allowed pages, default to map
+const ALLOWED = ['map.html','clusters.html','summary.html','scatter3d.html','news.html'];
+const param = new URLSearchParams(window.location.search).get('redirect');
+const LANDING = (param && ALLOWED.includes(param)) ? param : 'map.html';
 
 // ═══════════════════════════════════════════════════════════════════
 
@@ -268,12 +269,10 @@ async function digestHex(text) {
     .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Check if already authed
-(function checkExisting() {
-  if (sessionStorage.getItem(TOKEN_KEY) === HASH) {
-    window.location.replace(LANDING);
-  }
-})();
+// Check if already authed — skip gate entirely
+if (localStorage.getItem(TOKEN_KEY) === HASH) {
+  window.location.replace(LANDING);
+}
 
 async function tryAuth() {
   const pw = document.getElementById('pw').value;
@@ -282,25 +281,23 @@ async function tryAuth() {
   const hash = await digestHex(pw);
 
   if (hash === HASH) {
-    sessionStorage.setItem(TOKEN_KEY, HASH);
+    localStorage.setItem(TOKEN_KEY, HASH);
     window.location.replace(LANDING);
   } else {
     const err = document.getElementById('error');
     const container = document.querySelector('.gate-container');
     err.textContent = 'Invalid access code';
     container.classList.remove('shake');
-    void container.offsetWidth; // reflow to re-trigger
+    void container.offsetWidth;
     container.classList.add('shake');
     document.getElementById('pw').select();
   }
 }
 
-// Enter key
 document.getElementById('pw').addEventListener('keydown', e => {
   if (e.key === 'Enter') tryAuth();
 });
 
-// Toggle visibility
 function toggleVis() {
   const inp = document.getElementById('pw');
   inp.type = inp.type === 'password' ? 'text' : 'password';
